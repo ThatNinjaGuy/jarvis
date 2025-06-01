@@ -1,0 +1,1 @@
+"""Configuration and session management for the ADK Voice Agent.""" 
