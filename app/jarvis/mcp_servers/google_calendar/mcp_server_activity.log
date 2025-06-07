@@ -1,0 +1,32 @@
+2025-06-08 01:00:28,906 - INFO - [server.py:483] - Creating MCP Server instance for Google Calendar...
+2025-06-08 01:00:28,906 - DEBUG - [server.py:147] - Initializing server 'google-calendar-mcp-server'
+2025-06-08 01:00:28,906 - DEBUG - [server.py:386] - Registering handler for ListToolsRequest
+2025-06-08 01:00:28,906 - DEBUG - [server.py:408] - Registering handler for CallToolRequest
+2025-06-08 01:00:28,906 - INFO - [server.py:569] - Launching Google Calendar MCP Server via stdio...
+2025-06-08 01:00:28,906 - DEBUG - [selector_events.py:64] - Using selector: KqueueSelector
+2025-06-08 01:00:28,908 - INFO - [server.py:553] - MCP Stdio Server: Starting handshake with client...
+2025-06-08 01:02:49,299 - INFO - [server.py:573] - 
+MCP Server (stdio) stopped by user.
+2025-06-08 01:02:49,300 - INFO - [server.py:579] - MCP Server (stdio) process exiting.
+1:00:28,910 - DEBUG - [server.py:508] - Received message: <mcp.shared.session.RequestResponder object at 0x11b2930e0>
+2025-06-08 01:00:28,910 - INFO - [server.py:551] - Processing request of type ListToolsRequest
+2025-06-08 01:00:28,910 - DEBUG - [server.py:554] - Dispatching request of type ListToolsRequest
+2025-06-08 01:00:28,910 - INFO - [server.py:497] - MCP Server: Received list_tools request.
+2025-06-08 01:00:28,910 - INFO - [server.py:504] - MCP Server: Advertising tool: list_events, InputSchema: {'type': 'object', 'properties': {'start_date': {'type': 'string'}, 'days': {'type': 'integer'}}}
+2025-06-08 01:00:28,911 - INFO - [server.py:504] - MCP Server: Advertising tool: create_event, InputSchema: {'type': 'object', 'properties': {'summary': {'type': 'string'}, 'start_time': {'type': 'string'}, 'end_time': {'type': 'string'}}}
+2025-06-08 01:00:28,911 - INFO - [server.py:504] - MCP Server: Advertising tool: delete_event, InputSchema: {'type': 'object', 'properties': {'event_id': {'type': 'string'}, 'confirm': {'type': 'boolean'}}}
+2025-06-08 01:00:28,911 - INFO - [server.py:504] - MCP Server: Advertising tool: edit_event, InputSchema: {'type': 'object', 'properties': {'event_id': {'type': 'string'}, 'summary': {'type': 'string'}, 'start_time': {'type': 'string'}, 'end_time': {'type': 'string'}}}
+2025-06-08 01:00:28,911 - DEBUG - [server.py:589] - Response sent
+2025-06-08 01:00:46,236 - DEBUG - [server.py:508] - Received message: <mcp.shared.session.RequestResponder object at 0x11b292b10>
+2025-06-08 01:00:46,237 - INFO - [server.py:551] - Processing request of type CallToolRequest
+2025-06-08 01:00:46,237 - DEBUG - [server.py:554] - Dispatching request of type CallToolRequest
+2025-06-08 01:00:46,238 - INFO - [server.py:513] - MCP Server: Received call_tool request for 'list_events' with args: {'days': 1, 'start_date': ''}
+2025-06-08 01:00:46,239 - INFO - [server.py:245] - Listing events - Start date: , Days: 1
+2025-06-08 01:00:46,245 - INFO - [__init__.py:49] - file_cache is only supported with oauth2client<4.0.0
+2025-06-08 01:00:46,254 - DEBUG - [discovery.py:1258] - URL being requested: GET https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=2025-06-07T19%3A30%3A46.248595Z&timeMax=2025-06-08T19%3A30%3A46.248595Z&maxResults=100&singleEvents=true&orderBy=startTime&alt=json
+2025-06-08 01:00:46,943 - INFO - [server.py:524] - MCP Server: ADK tool 'list_events' executed. Response: {'status': 'success', 'message': 'Found 3 event(s).', 'events': [{'id': 'pk2beh59krfmbqhodkb10uf9c4', 'summary': 'Meeting with Shankar', 'start': '2025-06-08 04:00 PM', 'end': '2025-06-08 04:30 PM', 'location': '', 'description': '', 'attendees': [], 'link': 'https://www.google.com/calendar/event?eid=cGsyYmVoNTlrcmZtYnFob2RrYjEwdWY5YzQgdmlzaGFsZ2F1dGFtLnRlY2hAbQ'}, {'id': 'eant0sgcdvfnkgqa2pa52lq560', 'summary': 'Meeting with Shredha', 'start': '2025-06-08 05:00 PM', 'end': '2025-06-08 06:00 PM', 'location': '', 'description': '', 'attendees': [], 'link': 'https://www.google.com/calendar/event?eid=ZWFudDBzZ2NkdmZua2dxYTJwYTUybHE1NjAgdmlzaGFsZ2F1dGFtLnRlY2hAbQ'}, {'id': '9qfvee7sefqg9t793p6mevcd1g', 'summary': 'Buy Groceries', 'start': '2025-06-08 07:00 PM', 'end': '2025-06-08 08:00 PM', 'location': '', 'description': '', 'attendees': [], 'link': 'https://www.google.com/calendar/event?eid=OXFmdmVlN3NlZnFnOXQ3OTNwNm1ldmNkMWcgdmlzaGFsZ2F1dGFtLnRlY2hAbQ'}]}
+2025-06-08 01:00:46,944 - DEBUG - [server.py:589] - Response sent
+2025-06-08 01:00:46,944 - INFO - [server.py:541] - Warning: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+2025-06-08 01:02:49,298 - INFO - [server.py:573] - 
+MCP Server (stdio) stopped by user.
+2025-06-08 01:02:49,300 - INFO - [server.py:579] - MCP Server (stdio) process exiting.

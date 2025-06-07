@@ -2,17 +2,13 @@ from google.adk.agents import Agent
 from pathlib import Path
 from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset, StdioServerParameters
 
-# from google.adk.tools import google_search  # Import the search tool
-from .tools import (
-    create_event,
-    delete_event,
-    edit_event,
-    get_current_time,
-    list_events,
+from .utils import (
+    get_current_time
 )
 
 # IMPORTANT: Dynamically compute the absolute path to your server.py script
 PATH_TO_SQL_LITE_SERVER = str((Path(__file__).parent / "mcp_servers" / "sqllite" / "server.py").resolve())
+PATH_TO_CALENDAR_SERVER = str((Path(__file__).parent / "mcp_servers" / "google_calendar" / "server.py").resolve())
 
 root_agent = Agent(
     # A unique name for the agent.
@@ -54,10 +50,12 @@ root_agent = Agent(
     Today's date is {get_current_time()}.
     """,
     tools=[
-        list_events,
-        create_event,
-        edit_event,
-        delete_event,
+        MCPToolset(
+            connection_params=StdioServerParameters(
+                command="python3",
+                args=[PATH_TO_CALENDAR_SERVER],
+            )
+        ),
         MCPToolset(
             connection_params=StdioServerParameters(
                 command="python3",
