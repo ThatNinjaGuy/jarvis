@@ -1,6 +1,6 @@
-# Google Calendar Integration for ADK Voice Assistant
+# Jarvis Assistant
 
-This document explains how to set up and use the Google Calendar integration with your ADK Voice Assistant.
+This document explains how to set up and use the Jarvis Assistant. This has multiple functionalities integrated with it via MCP servers to enable user journey.
 
 ## Setup Instructions
 
