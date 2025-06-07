@@ -1,4 +1,4 @@
-google-adk==0.5.0
+google-adk==1.0.0
 google-genai==1.14.0
 google-api-python-client>=2.169.0
 google-auth>=2.40.1
@@ -14,7 +14,6 @@ cryptography==44.0.3
 Deprecated==1.2.18
 docstring_parser==0.16
 fastapi==0.115.12
-google-adk==0.5.0
 google-api-core==2.24.2
 google-api-python-client==2.169.0
 google-auth==2.40.1
@@ -43,7 +42,6 @@ httpx==0.28.1
 httpx-sse==0.4.0
 idna==3.10
 importlib_metadata==8.6.1
-mcp==1.8.1
 numpy==2.2.5
 oauthlib==3.2.2
 opentelemetry-api==1.33.0
@@ -84,3 +82,4 @@ websockets==15.0.1
 wrapt==1.17.2
 zipp==3.21.0
 pytz
+mcp==1.9.1

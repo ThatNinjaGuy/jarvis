@@ -37,7 +37,8 @@ async def websocket_endpoint(
         print(f"Client #{session_id} connected, audio mode: {is_audio}")
         
         # Start agent session
-        session_data = start_agent_session(session_id, is_audio == "true")
+        session_data = await start_agent_session(session_id, is_audio == "true")
+        
         # Start tasks
         agent_to_client_task = asyncio.create_task(
             handle_agent_to_client_messaging(websocket, session_data["live_events"])

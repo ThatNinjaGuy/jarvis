@@ -14,11 +14,11 @@ APP_NAME = "Jarvis"
 session_service = InMemorySessionService()
 
 
-def start_agent_session(session_id, is_audio=False):
+async def start_agent_session(session_id, is_audio=False):
     """Starts an agent session and returns the necessary components for communication"""
     
     # Create a Session
-    session = session_service.create_session(
+    session = await session_service.create_session(
         app_name=APP_NAME,
         user_id=session_id,
         session_id=session_id,
@@ -65,5 +65,6 @@ def start_agent_session(session_id, is_audio=False):
     return {
         "session": session,
         "live_events": live_events,
-        "live_request_queue": live_request_queue
+        "live_request_queue": live_request_queue,
+        "runner": runner  # Add runner to keep it in scope
     } 

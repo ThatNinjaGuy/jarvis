@@ -11,7 +11,7 @@ async def handle_agent_to_client_messaging(
     websocket: WebSocket, live_events: AsyncIterable[Event | None]
 ):
     """Handle communication from agent to client"""
-    while True:
+    try:
         async for event in live_events:
             if event is None:
                 continue
@@ -23,6 +23,9 @@ async def handle_agent_to_client_messaging(
 
             # Process event content
             await _process_event_content(websocket, event)
+    except Exception as e:
+        print(f"Error in agent-to-client messaging: {str(e)}")
+        raise
 
 
 async def _send_turn_status(websocket: WebSocket, event: Event):

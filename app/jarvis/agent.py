@@ -1,4 +1,6 @@
 from google.adk.agents import Agent
+from pathlib import Path
+from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset, StdioServerParameters
 
 # from google.adk.tools import google_search  # Import the search tool
 from .tools import (
@@ -8,6 +10,9 @@ from .tools import (
     get_current_time,
     list_events,
 )
+
+# IMPORTANT: Dynamically compute the absolute path to your server.py script
+PATH_TO_YOUR_MCP_SERVER_SCRIPT = str((Path(__file__).parent / "server.py").resolve())
 
 root_agent = Agent(
     # A unique name for the agent.
@@ -25,6 +30,14 @@ root_agent = Agent(
     - `edit_event`: Edit an existing event (change title or reschedule)
     - `delete_event`: Remove an event from your calendar
     - `find_free_time`: Find available free time slots in your calendar
+    
+    ## Database operations
+    You can also interact with a local SQLite database using these tools:
+    - `list_db_tables`: List all tables in the database
+    - `get_table_schema`: Get the schema of a specific table
+    - `query_db_table`: Query data from a table
+    - `insert_data`: Insert new data into a table
+    - `delete_data`: Delete data from a table
     
     ## Be proactive and conversational
     Be proactive when handling calendar requests. Don't ask unnecessary questions when the context or defaults make sense.
@@ -69,5 +82,11 @@ root_agent = Agent(
         create_event,
         edit_event,
         delete_event,
+        MCPToolset(
+            connection_params=StdioServerParameters(
+                command="python3",
+                args=[PATH_TO_YOUR_MCP_SERVER_SCRIPT],
+            )
+        ),
     ],
 )
