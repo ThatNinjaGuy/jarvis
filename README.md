@@ -16,12 +16,14 @@ python -m venv .venv
 Activate the virtual environment:
 
 On Windows:
+
 ```bash
 # Activate virtual environment on Windows
 .venv\Scripts\activate
 ```
 
 On macOS/Linux:
+
 ```bash
 # Activate virtual environment on macOS/Linux
 source .venv/bin/activate
@@ -73,38 +75,53 @@ python setup_calendar_auth.py
 ```
 
 This will:
+
 1. Start the OAuth 2.0 authorization flow
 2. Open your browser to authorize the application
 3. Save the access token securely for future use
 4. Test the connection to your Google Calendar
 
-## Working with Multiple Calendars
+### 6. SQLite Database Integration
 
-The Google Calendar integration supports working with multiple calendars. The OAuth flow will grant access to all calendars associated with your Google account. You can:
+The application includes a SQLite MCP server that provides database functionality for storing and managing application data. This integration allows for persistent storage and querying of data through MCP tools.
 
-1. List all available calendars using the voice command "What calendars do I have access to?"
-2. Specify which calendar to use for operations by name or ID
-3. Use your primary calendar by default if no calendar is specified
+#### Setting Up the SQLite Database
 
-Examples:
-- "Show me all my calendars"
-- "Create a meeting in my Work calendar" 
-- "What's on my Family calendar this weekend?"
+1. Navigate to the SQLite MCP server directory:
 
-## Using the Calendar Integration
+```bash
+cd app/jarvis/mcp_servers/sqllite
+```
 
-Once set up, you can interact with your Google Calendar through the voice assistant:
+2. Run the database creation script:
 
-### Examples:
+```bash
+python create_db.py
+```
 
-- "What's on my calendar today?"
-- "Show me my schedule for next week"
-- "Create a meeting with John tomorrow at 2 PM"
-- "Schedule a doctor's appointment for next Friday at 10 AM"
-- "Find a free time slot for a 30-minute meeting tomorrow"
-- "Delete my 3 PM meeting today"
-- "Reschedule my meeting with Sarah to Thursday at 11 AM"
-- "Change the title of my dentist appointment to 'Dental Cleaning'"
+This script will:
+
+- Create a new SQLite database file (`database.db`) if it doesn't exist
+- Set up the initial tables:
+  - `users`: Stores user information (id, username, email)
+  - `todos`: Stores todo items (id, user_id, task, completed)
+- Populate the tables with some sample data
+
+#### Available SQLite MCP Tools
+
+The SQLite MCP server exposes several database operations as tools:
+
+- `list_db_tables`: Lists all tables in the database
+- `get_table_schema`: Retrieves the schema (columns and types) for a specific table
+- `query_db_table`: Executes SELECT queries with optional conditions
+- `insert_data`: Inserts new records into a table
+- `delete_data`: Deletes records from a table based on conditions
+
+These tools can be used through the voice assistant to interact with the database.
+
+#### Database Location
+
+The SQLite database file (`database.db`) is stored in the `app/jarvis/mcp_servers/sqllite` directory. This file contains all your application data and can be backed up or moved as needed.
 
 ## Running the Application
 
