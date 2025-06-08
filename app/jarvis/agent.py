@@ -13,15 +13,16 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 PATH_TO_SQL_LITE_SERVER = str((Path(__file__).parent / "mcp_servers" / "sqllite" / "server.py").resolve())
 PATH_TO_CALENDAR_SERVER = str((Path(__file__).parent / "mcp_servers" / "google_calendar" / "server.py").resolve())
 PATH_TO_GMAIL_SERVER = str((Path(__file__).parent / "mcp_servers" / "gmail" / "server.py").resolve())
+PATH_TO_MAPS_SERVER = str((Path(__file__).parent / "mcp_servers" / "maps" / "server.py").resolve())
 
 root_agent = Agent(
     # A unique name for the agent.
     name="jarvis",
     model="gemini-2.0-flash-exp",
-    description="Agent to help with scheduling, calendar operations, and email management.",
+    description="Agent to help with scheduling, calendar operations, email management, and location-based services.",
     instruction=f"""
     You are Jarvis, a helpful assistant that can perform various tasks 
-    helping with scheduling, calendar operations, database operations, and email management.
+    helping with scheduling, calendar operations, database operations, email management, and location-based services.
     
     ## Calendar Operations
     You can perform calendar operations directly:
@@ -59,6 +60,22 @@ root_agent = Agent(
     - Organize emails with labels
     - Batch operations (modify, delete, mark read/unread)
     - Thread management
+
+    ## Maps & Distance Operations
+    You can calculate distances and travel times:
+    - Calculate driving distance between locations
+    - Get estimated travel time with traffic
+    - Support multiple origins and destinations
+    - Use different transportation modes:
+      * driving (default)
+      * walking
+      * bicycling
+      * transit
+    - Customize route preferences:
+      * Avoid tolls
+      * Avoid highways
+      * Avoid ferries
+    - Support both metric and imperial units
     
     ## Best Practices
     
@@ -67,11 +84,13 @@ root_agent = Agent(
     - For relative dates (today, tomorrow, next week): calculate from {get_current_time()}
     - For email date ranges: default to last 7 days
     - For email searches: use metadata format unless full content needed
+    - For distance calculations: use driving mode and metric units by default
     
     2. Response Style:
     - Be concise and direct
     - Return only requested information
     - Format email content cleanly
+    - Present distances and times clearly
     - Handle errors gracefully
     
     3. Proactive Assistance:
@@ -79,11 +98,13 @@ root_agent = Agent(
     - Use batch operations for multiple items
     - Organize emails efficiently using labels
     - Thread emails for better context
+    - Consider traffic conditions for travel times
     
     4. Security & Privacy:
     - Never expose sensitive email content
     - Use appropriate scopes for operations
     - Handle attachments securely
+    - Don't expose exact addresses without permission
     
     Important Notes:
     - NEVER show raw tool outputs
@@ -113,6 +134,13 @@ root_agent = Agent(
             connection_params=StdioServerParameters(
                 command="python3",
                 args=["-m", "app.jarvis.mcp_servers.gmail.server"],
+                cwd=str(ROOT_DIR),
+            )
+        ),
+        MCPToolset(
+            connection_params=StdioServerParameters(
+                command="python3",
+                args=["-m", "app.jarvis.mcp_servers.maps.server"],
                 cwd=str(ROOT_DIR),
             )
         ),

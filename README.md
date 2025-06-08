@@ -57,6 +57,7 @@ GOOGLE_API_KEY=your_api_key_here
    - Search for and enable:
      - "Google Calendar API"
      - "Gmail API"
+     - "Distance Matrix API"
 
 ### 4. Create OAuth 2.0 Credentials
 
@@ -68,7 +69,21 @@ GOOGLE_API_KEY=your_api_key_here
 6. Download the credentials JSON file
 7. Save the file as `credentials.json` in the root directory of this project
 
-### 5. Run the Setup Scripts
+### 5. Set Up Google Maps API Key
+
+Run the Maps API setup script:
+
+```bash
+python setup_maps_auth.py
+```
+
+This script will:
+
+1. Guide you through creating an API key in Google Cloud Console
+2. Test the API key with a sample distance calculation
+3. Save the API key securely in your `.env` file
+
+### 6. Run the Setup Scripts
 
 Run the setup scripts to authenticate with Google services:
 
@@ -87,7 +102,7 @@ These scripts will:
 3. Save the access tokens securely for future use
 4. Test the connection to the respective Google services
 
-### 6. SQLite Database Integration
+### 7. SQLite Database Integration
 
 The application includes a SQLite MCP server that provides database functionality for storing and managing application data. This integration allows for persistent storage and querying of data through MCP tools.
 
@@ -130,6 +145,20 @@ These tools can be used through the voice assistant to interact with the databas
 The SQLite database file (`database.db`) is stored in the `app/jarvis/mcp_servers/sqllite` directory. This file contains all your application data and can be backed up or moved as needed.
 
 ## Features
+
+### Google Maps Integration
+
+The assistant includes Google Maps functionality through the Maps MCP server. Available features include:
+
+1. Distance Matrix Calculations:
+   - Calculate driving distance and duration between locations
+   - Support for multiple origins and destinations
+   - Real-time traffic information
+   - Multiple transportation modes (driving, walking, bicycling, transit)
+   - Route customization (avoid tolls, highways, ferries)
+   - Support for both metric and imperial units
+
+The Maps integration uses the Google Maps Distance Matrix API to provide accurate distance and time calculations, taking into account real-time traffic conditions when available.
 
 ### Gmail Integration
 
