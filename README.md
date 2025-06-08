@@ -58,6 +58,7 @@ GOOGLE_API_KEY=your_api_key_here
      - "Google Calendar API"
      - "Gmail API"
      - "Distance Matrix API"
+     - "YouTube Data API v3"
 
 ### 4. Create OAuth 2.0 Credentials
 
@@ -93,6 +94,9 @@ python setup_calendar_auth.py
 
 # Set up Gmail authentication
 python setup_gmail_auth.py
+
+# Set up YouTube authentication
+python setup_youtube_auth.py
 ```
 
 These scripts will:
@@ -197,6 +201,36 @@ The assistant includes Google Calendar functionality through the Google Calendar
 
 The calendar integration uses secure OAuth 2.0 authentication and provides a comprehensive set of tools for event and reminder management through voice commands or text interactions.
 
+### YouTube Integration
+
+The assistant includes YouTube functionality through the YouTube MCP server. Available features include:
+
+1. Video Search:
+   - Search for videos with customizable parameters
+   - Filter by relevance, view count, rating, or date
+   - Specify maximum results to return
+   - Get comprehensive video metadata
+
+2. Video Details:
+   - Get detailed information about specific videos
+   - View statistics (views, likes, comments)
+   - Get video duration and publish date
+   - Access video thumbnails and channel information
+
+3. Channel Information:
+   - Retrieve channel details and statistics
+   - Get subscriber count and total views
+   - Access channel description and custom URL
+   - View channel thumbnails and branding
+
+4. Comments Management:
+   - Get video comments with engagement metrics
+   - View comment author information
+   - See reply counts and like counts
+   - Access comment timestamps
+
+The YouTube integration uses secure OAuth 2.0 authentication and provides comprehensive access to YouTube data through voice commands or text interactions. It respects YouTube's content policies and API quotas while providing rich metadata about videos, channels, and user engagement.
+
 ## Running the Application
 
 After completing the setup, you can run the application using the following command:
@@ -214,25 +248,37 @@ This will start the application server, and you can interact with your voice ass
 
 If you encounter authentication errors:
 
-1. Delete the token file at `~/.credentials/calendar_token.json`
-2. Run the setup script again
+1. Delete the relevant token file:
+   - Calendar: `~/.credentials/calendar_token.json`
+   - Gmail: `~/.credentials/gmail_token.json`
+   - YouTube: `~/.credentials/youtube_token.json`
+2. Run the corresponding setup script again
 
 ### Permission Issues
 
-If you need additional calendar permissions:
+If you need additional permissions:
 
-1. Delete the token file at `~/.credentials/calendar_token.json`
-2. Edit the `SCOPES` variable in `app/jarvis/tools/calendar_utils.py`
+1. Delete the relevant token file
+2. Edit the `SCOPES` variable in the corresponding setup script:
+   - Calendar: `setup_calendar_auth.py`
+   - Gmail: `setup_gmail_auth.py`
+   - YouTube: `setup_youtube_auth.py`
 3. Run the setup script again
 
 ### API Quota
 
-Google Calendar API has usage quotas. If you hit quota limits:
+Google APIs have usage quotas. If you hit quota limits:
 
 1. Check your [Google Cloud Console](https://console.cloud.google.com/)
 2. Navigate to "APIs & Services" > "Dashboard"
-3. Select "Google Calendar API"
+3. Select the relevant API:
+   - "Google Calendar API"
+   - "Gmail API"
+   - "Distance Matrix API"
+   - "YouTube Data API v3"
 4. View your quota usage and consider upgrading if necessary
+
+Note: The YouTube Data API has stricter quota limits than other Google APIs. Each API operation costs a certain number of quota points, with a default daily quota of 10,000 points. Plan your usage accordingly.
 
 ### Package Installation Issues
 
@@ -244,6 +290,8 @@ If you encounter issues installing the required packages:
 
 ## Security Considerations
 
-- The OAuth token is stored securely in your user directory
-- Never share your `credentials.json` file or the generated token
-- The application only requests the minimum permissions needed for calendar operations
+- The OAuth tokens are stored securely in your user directory
+- Never share your `credentials.json` file or the generated tokens
+- The application only requests the minimum permissions needed for each service
+- YouTube content restrictions and age limits are respected
+- All API calls are made over secure HTTPS connections

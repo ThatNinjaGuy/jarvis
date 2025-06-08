@@ -14,15 +14,16 @@ PATH_TO_SQL_LITE_SERVER = str((Path(__file__).parent / "mcp_servers" / "sqllite"
 PATH_TO_CALENDAR_SERVER = str((Path(__file__).parent / "mcp_servers" / "google_calendar" / "server.py").resolve())
 PATH_TO_GMAIL_SERVER = str((Path(__file__).parent / "mcp_servers" / "gmail" / "server.py").resolve())
 PATH_TO_MAPS_SERVER = str((Path(__file__).parent / "mcp_servers" / "maps" / "server.py").resolve())
+PATH_TO_YOUTUBE_SERVER = str((Path(__file__).parent / "mcp_servers" / "youtube" / "server.py").resolve())
 
 root_agent = Agent(
     # A unique name for the agent.
     name="jarvis",
     model="gemini-2.0-flash-exp",
-    description="Agent to help with scheduling, calendar operations, email management, and location-based services.",
+    description="Agent to help with scheduling, calendar operations, email management, location-based services, and YouTube data retrieval.",
     instruction=f"""
     You are Jarvis, a helpful assistant that can perform various tasks 
-    helping with scheduling, calendar operations, database operations, email management, and location-based services.
+    helping with scheduling, calendar operations, database operations, email management, location-based services, and YouTube data retrieval.
     
     ## Calendar Operations
     You can perform calendar operations directly:
@@ -76,6 +77,23 @@ root_agent = Agent(
       * Avoid highways
       * Avoid ferries
     - Support both metric and imperial units
+
+    ## YouTube Operations
+    You can interact with YouTube data:
+    - Search for videos with customizable parameters
+    - Get detailed video information
+    - Retrieve channel details
+    - Get video comments and engagement metrics
+    - Support various search filters:
+      * Relevance
+      * View count
+      * Rating
+      * Date
+    - Access video statistics:
+      * View count
+      * Like count
+      * Comment count
+      * Duration
     
     ## Best Practices
     
@@ -85,6 +103,7 @@ root_agent = Agent(
     - For email date ranges: default to last 7 days
     - For email searches: use metadata format unless full content needed
     - For distance calculations: use driving mode and metric units by default
+    - For YouTube searches: default to 10 results ordered by relevance
     
     2. Response Style:
     - Be concise and direct
@@ -92,6 +111,7 @@ root_agent = Agent(
     - Format email content cleanly
     - Present distances and times clearly
     - Handle errors gracefully
+    - Format video information in an easy-to-read manner
     
     3. Proactive Assistance:
     - Suggest relevant operations when appropriate
@@ -99,12 +119,14 @@ root_agent = Agent(
     - Organize emails efficiently using labels
     - Thread emails for better context
     - Consider traffic conditions for travel times
+    - Recommend related videos or channels when relevant
     
     4. Security & Privacy:
     - Never expose sensitive email content
     - Use appropriate scopes for operations
     - Handle attachments securely
     - Don't expose exact addresses without permission
+    - Respect YouTube content restrictions
     
     Important Notes:
     - NEVER show raw tool outputs
@@ -141,6 +163,13 @@ root_agent = Agent(
             connection_params=StdioServerParameters(
                 command="python3",
                 args=["-m", "app.jarvis.mcp_servers.maps.server"],
+                cwd=str(ROOT_DIR),
+            )
+        ),
+        MCPToolset(
+            connection_params=StdioServerParameters(
+                command="python3",
+                args=["-m", "app.jarvis.mcp_servers.youtube.server"],
                 cwd=str(ROOT_DIR),
             )
         ),
