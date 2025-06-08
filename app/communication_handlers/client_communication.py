@@ -1,5 +1,6 @@
 import base64
 import json
+import logging
 
 from fastapi import WebSocket
 from google.adk.agents import LiveRequestQueue
@@ -11,12 +12,16 @@ async def handle_client_to_agent_messaging(
 ):
     """Handle communication from client to agent"""
     while True:
-        # Decode JSON message
-        message_json = await websocket.receive_text()
-        message = json.loads(message_json)
-        
-        # Process message based on mime type
-        await _process_client_message(websocket, live_request_queue, message)
+        try:
+            # Decode JSON message
+            message_json = await websocket.receive_text()
+            message = json.loads(message_json)
+            
+            # Process message based on mime type
+            await _process_client_message(websocket, live_request_queue, message)
+        except Exception as e:
+            logging.error(f"Error processing client message: {str(e)}", exc_info=True)
+            raise
 
 
 async def _process_client_message(
@@ -41,7 +46,7 @@ async def _handle_text_message(
     """Handle text message from client"""
     content = types.Content(role=role, parts=[types.Part.from_text(text=data)])
     live_request_queue.send_content(content=content)
-    print(f"[CLIENT TO AGENT PRINT]: {data}")
+    logging.info(f"[CLIENT TO AGENT]: {data}")
 
 
 async def _handle_audio_message(live_request_queue: LiveRequestQueue, data: str):
@@ -50,4 +55,4 @@ async def _handle_audio_message(live_request_queue: LiveRequestQueue, data: str)
     live_request_queue.send_realtime(
         types.Blob(data=decoded_data, mime_type="audio/pcm")
     )
-    print(f"[CLIENT TO AGENT]: audio/pcm: {len(decoded_data)} bytes") 
+    logging.debug(f"[CLIENT TO AGENT]: audio/pcm: {len(decoded_data)} bytes") 

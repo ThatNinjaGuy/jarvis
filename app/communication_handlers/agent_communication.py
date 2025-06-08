@@ -1,5 +1,6 @@
 import base64
 import json
+import logging
 from typing import AsyncIterable
 
 from fastapi import WebSocket
@@ -24,7 +25,7 @@ async def handle_agent_to_client_messaging(
             # Process event content
             await _process_event_content(websocket, event)
     except Exception as e:
-        print(f"Error in agent-to-client messaging: {str(e)}")
+        logging.error(f"Error in agent-to-client messaging: {str(e)}", exc_info=True)
         raise
 
 
@@ -35,7 +36,7 @@ async def _send_turn_status(websocket: WebSocket, event: Event):
         "interrupted": event.interrupted,
     }
     await websocket.send_text(json.dumps(message))
-    print(f"[AGENT TO CLIENT]: {message}")
+    logging.info(f"[AGENT TO CLIENT]: Turn status - {message}")
 
 
 async def _process_event_content(websocket: WebSocket, event: Event):
@@ -71,7 +72,7 @@ async def _send_text_content(websocket: WebSocket, text: str):
         "role": "model",
     }
     await websocket.send_text(json.dumps(message))
-    print(f"[AGENT TO CLIENT]: text/plain: {text}")
+    logging.info(f"[AGENT TO CLIENT]: text/plain: {text}")
 
 
 async def _send_audio_content(websocket: WebSocket, part: types.Part):
@@ -84,4 +85,4 @@ async def _send_audio_content(websocket: WebSocket, part: types.Part):
             "role": "model",
         }
         await websocket.send_text(json.dumps(message))
-        print(f"[AGENT TO CLIENT]: audio/pcm: {len(audio_data)} bytes.") 
+        logging.debug(f"[AGENT TO CLIENT]: audio/pcm: {len(audio_data)} bytes.") 

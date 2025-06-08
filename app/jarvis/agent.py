@@ -6,6 +6,9 @@ from .utils import (
     get_current_time
 )
 
+# Get the root directory of the project
+ROOT_DIR = Path(__file__).resolve().parents[2]
+
 # IMPORTANT: Dynamically compute the absolute path to your server.py script
 PATH_TO_SQL_LITE_SERVER = str((Path(__file__).parent / "mcp_servers" / "sqllite" / "server.py").resolve())
 PATH_TO_CALENDAR_SERVER = str((Path(__file__).parent / "mcp_servers" / "google_calendar" / "server.py").resolve())
@@ -53,13 +56,15 @@ root_agent = Agent(
         MCPToolset(
             connection_params=StdioServerParameters(
                 command="python3",
-                args=[PATH_TO_CALENDAR_SERVER],
+                args=["-m", "app.jarvis.mcp_servers.google_calendar.server"],
+                cwd=str(ROOT_DIR),
             )
         ),
         MCPToolset(
             connection_params=StdioServerParameters(
                 command="python3",
-                args=[PATH_TO_SQL_LITE_SERVER],
+                args=["-m", "app.jarvis.mcp_servers.sqllite.server"],
+                cwd=str(ROOT_DIR),
             )
         ),
     ],

@@ -2,12 +2,22 @@ import asyncio
 import json
 import logging
 import os
+import sys
 import datetime
 from pathlib import Path
 from pytz import timezone
 
+# Add the root directory to Python path for imports
+root_dir = str(Path(__file__).resolve().parents[4])
+if root_dir not in sys.path:
+    sys.path.insert(0, root_dir)
+
 import mcp.server.stdio
-from dotenv import load_dotenv
+from app.jarvis.utils import get_token_path, get_google_credentials, load_environment
+from app.config.logging_config import setup_cloud_logging
+
+# Setup cloud logging
+setup_cloud_logging()
 
 # Google Calendar imports
 from google.auth.transport.requests import Request
@@ -24,7 +34,8 @@ from mcp import types as mcp_types
 from mcp.server.lowlevel import NotificationOptions, Server
 from mcp.server.models import InitializationOptions
 
-load_dotenv()
+# Load environment variables
+load_environment()
 
 # --- Logging Setup ---
 LOG_FILE_PATH = os.path.join(os.path.dirname(__file__), "mcp_server_activity.log")
@@ -40,9 +51,8 @@ logging.basicConfig(
 # Define scopes needed for Google Calendar
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 
-# Path for token storage
-TOKEN_PATH = Path(os.path.expanduser("~/.credentials/calendar_token.json"))
-CREDENTIALS_PATH = Path("credentials.json")
+# Get paths from environment utility
+TOKEN_PATH = get_token_path()
 
 def get_calendar_service():
     """
@@ -55,31 +65,56 @@ def get_calendar_service():
 
     # Check if token exists and is valid
     if TOKEN_PATH.exists():
-        creds = Credentials.from_authorized_user_info(
-            json.loads(TOKEN_PATH.read_text()), SCOPES
-        )
+        try:
+            creds = Credentials.from_authorized_user_info(
+                json.loads(TOKEN_PATH.read_text()), SCOPES
+            )
+            logging.debug("Successfully loaded existing credentials")
+        except Exception as e:
+            logging.warning(f"Failed to load existing credentials: {e}", exc_info=True)
+            # If token is corrupted or invalid, we'll create new credentials
+            pass
 
     # If credentials don't exist or are invalid, refresh or get new ones
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
+            try:
+                creds.refresh(Request())
+                logging.info("Successfully refreshed expired credentials")
+            except Exception as e:
+                logging.error(f"Failed to refresh credentials: {e}", exc_info=True)
+                return None
         else:
-            # If credentials.json doesn't exist, we can't proceed with OAuth flow
-            if not CREDENTIALS_PATH.exists():
-                print(
-                    f"Error: {CREDENTIALS_PATH} not found. Please follow setup instructions."
-                )
+            # Get credentials from environment or file
+            creds_info = get_google_credentials()
+            if not creds_info:
+                logging.error("No valid credentials found. Please check configuration.")
                 return None
 
-            flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_PATH, SCOPES)
-            creds = flow.run_local_server(port=0)
+            try:
+                flow = InstalledAppFlow.from_client_config(creds_info, SCOPES)
+                creds = flow.run_local_server(port=0)
+                logging.info("Successfully created new credentials through OAuth flow")
+            except Exception as e:
+                logging.error(f"Error in authentication flow: {e}", exc_info=True)
+                return None
 
         # Save the credentials for the next run
-        TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
-        TOKEN_PATH.write_text(creds.to_json())
+        try:
+            TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
+            TOKEN_PATH.write_text(creds.to_json())
+            logging.debug(f"Saved credentials to {TOKEN_PATH}")
+        except Exception as e:
+            logging.warning(f"Failed to save credentials: {e}", exc_info=True)
 
     # Create and return the Calendar service
-    return build("calendar", "v3", credentials=creds)
+    try:
+        service = build("calendar", "v3", credentials=creds)
+        logging.debug("Successfully created Calendar service")
+        return service
+    except Exception as e:
+        logging.error(f"Failed to create Calendar service: {e}", exc_info=True)
+        return None
 
 def format_event_time(event_time):
     """

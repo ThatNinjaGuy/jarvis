@@ -1,6 +1,6 @@
 import asyncio
 import json
-import logging  # Added logging
+import logging
 import os
 import sqlite3  # For database operations
 
@@ -15,19 +15,12 @@ from google.adk.tools.mcp_tool.conversion_utils import adk_to_mcp_tool_type
 from mcp import types as mcp_types  # Use alias to avoid conflict
 from mcp.server.lowlevel import NotificationOptions, Server
 from mcp.server.models import InitializationOptions
+from app.config.logging_config import setup_cloud_logging
+
+# Setup cloud logging
+setup_cloud_logging()
 
 load_dotenv()
-
-# --- Logging Setup ---
-LOG_FILE_PATH = os.path.join(os.path.dirname(__file__), "mcp_server_activity.log")
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s",
-    handlers=[
-        logging.FileHandler(LOG_FILE_PATH, mode="w"),
-    ],
-)
-# --- End Logging Setup ---
 
 DATABASE_PATH = os.path.join(os.path.dirname(__file__), "database.db")
 
@@ -197,9 +190,7 @@ def delete_data(table_name: str, condition: str) -> dict:
 
 
 # --- MCP Server Setup ---
-logging.info(
-    "Creating MCP Server instance for SQLite DB..."
-)  # Changed print to logging.info
+logging.info("Creating MCP Server instance for SQLite DB...")
 app = Server("sqlite-db-mcp-server")
 
 # Wrap database utility functions as ADK FunctionTools

@@ -129,7 +129,7 @@ After completing the setup, you can run the application using the following comm
 
 ```bash
 # Start the ADK Voice Assistant with hot-reloading enabled
-uvicorn main:app --reload
+uvicorn app.main:app --reload
 ```
 
 This will start the application server, and you can interact with your voice assistant through the provided interface.

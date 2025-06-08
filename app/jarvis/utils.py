@@ -2,7 +2,11 @@
 Utility functions.
 """
 
-from datetime import datetime
+import os
+from pathlib import Path
+import json
+from typing import Optional
+import datetime
 from pytz import timezone
 
 def get_current_time() -> dict:
@@ -10,7 +14,7 @@ def get_current_time() -> dict:
     Get the current time and date in IST timezone
     """
     # Get current time in IST 
-    now = datetime.now(timezone('Asia/Kolkata'))
+    now = datetime.datetime.now(timezone('Asia/Kolkata'))
 
     # Format date as MM-DD-YYYY
     formatted_date = now.strftime("%m-%d-%Y")
@@ -19,3 +23,50 @@ def get_current_time() -> dict:
         "current_time": now.strftime("%Y-%m-%d %H:%M:%S"),
         "formatted_date": formatted_date,
     }
+
+def is_cloud_run() -> bool:
+    """Check if we're running in Cloud Run"""
+    return bool(os.environ.get("K_SERVICE"))
+
+def get_credentials_path() -> Path:
+    """Get the appropriate path for credentials.json"""
+    if is_cloud_run():
+        return Path("/app/credentials.json")
+    return Path("credentials.json")
+
+def get_token_path() -> Path:
+    """Get the appropriate path for token storage"""
+    if is_cloud_run():
+        return Path("/tmp/calendar_token.json")
+    return Path(os.path.expanduser("~/.credentials/calendar_token.json"))
+
+def get_google_credentials() -> Optional[dict]:
+    """Get Google Calendar credentials from environment or file"""
+    # First try environment variable (Cloud Run)
+    creds_json = os.environ.get("GOOGLE_CREDENTIALS")
+    if creds_json:
+        try:
+            return json.loads(creds_json)
+        except json.JSONDecodeError:
+            print("Error: Invalid JSON in GOOGLE_CREDENTIALS environment variable")
+            return None
+
+    # Then try local file (development)
+    creds_path = get_credentials_path()
+    if creds_path.exists():
+        try:
+            return json.loads(creds_path.read_text())
+        except json.JSONDecodeError:
+            print(f"Error: Invalid JSON in {creds_path}")
+            return None
+        except Exception as e:
+            print(f"Error reading {creds_path}: {e}")
+            return None
+
+    return None
+
+def load_environment():
+    """Load environment variables appropriately for the current environment"""
+    if not is_cloud_run():
+        from dotenv import load_dotenv
+        load_dotenv()
