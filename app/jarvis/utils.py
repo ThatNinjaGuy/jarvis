@@ -5,7 +5,7 @@ Utility functions.
 import os
 from pathlib import Path
 import json
-from typing import Optional
+from typing import Optional, Dict, List, Tuple
 import datetime
 from pytz import timezone
 
@@ -64,6 +64,32 @@ def get_google_credentials() -> Optional[dict]:
             return None
 
     return None
+
+def get_twitter_credentials() -> Dict[str, str]:
+    """
+    Get Twitter API credentials from environment variables.
+    Returns a dictionary with the credentials or raises ValueError if any are missing.
+    """
+    required_vars = {
+        'API_KEY': 'TWITTER_API_KEY',
+        'API_SECRET_KEY': 'TWITTER_API_SECRET',
+        'ACCESS_TOKEN': 'TWITTER_ACCESS_TOKEN',
+        'ACCESS_TOKEN_SECRET': 'TWITTER_ACCESS_TOKEN_SECRET'
+    }
+    
+    credentials = {}
+    missing_vars = []
+    
+    for key, env_var in required_vars.items():
+        value = os.getenv(env_var)
+        if not value:
+            missing_vars.append(env_var)
+        credentials[key] = str(value or "")
+    
+    if missing_vars:
+        raise ValueError(f"Missing required Twitter credentials: {', '.join(missing_vars)}")
+    
+    return credentials
 
 def load_environment():
     """Load environment variables appropriately for the current environment"""

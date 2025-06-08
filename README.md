@@ -148,6 +148,73 @@ These tools can be used through the voice assistant to interact with the databas
 
 The SQLite database file (`database.db`) is stored in the `app/jarvis/mcp_servers/sqllite` directory. This file contains all your application data and can be backed up or moved as needed.
 
+### 8. Twitter Integration Setup
+
+#### A. Install Node.js and Twitter MCP Server
+
+1. Install Node.js (v20.x or higher):
+
+```bash
+# On macOS using Homebrew
+brew install node
+
+# On Ubuntu/Debian
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+# Verify installation
+node --version  # Should output v20.x or higher
+npm --version
+```
+
+2. Install the Twitter MCP server globally:
+
+```bash
+npm install -g @enescinar/twitter-mcp
+```
+
+#### B. Get Twitter API Credentials
+
+1. Create a Twitter Developer Account:
+   - Visit [Twitter Developer Portal](https://developer.twitter.com/en/portal/dashboard)
+   - Sign in with your Twitter account
+   - Click on "Sign up" for a developer account if you haven't already
+   - Follow the application process and select the appropriate access level
+
+2. Create a New Project and App:
+   - Go to the [Developer Portal Dashboard](https://developer.twitter.com/en/portal/dashboard)
+   - Click "Create Project"
+   - Give your project a name and select your use case
+   - Click "Create App" within your project
+
+3. Generate API Keys and Tokens:
+   - In your app settings, navigate to the "Keys and Tokens" tab
+   - Generate/Regenerate the following credentials:
+     - API Key and Secret
+     - Access Token and Secret
+   - Save these credentials securely; they will be shown only once
+
+4. Set up Environment Variables:
+   - Create or update your `.env` file in the project root:
+
+```env
+TWITTER_API_KEY=your_api_key_here
+TWITTER_API_SECRET=your_api_secret_here
+TWITTER_ACCESS_TOKEN=your_access_token_here
+TWITTER_ACCESS_TOKEN_SECRET=your_access_token_secret_here
+```
+
+#### C. Verify Installation
+
+Test your Twitter integration:
+
+```bash
+# Start the ADK Voice Assistant
+uvicorn app.main:app --reload
+```
+
+The server should start without any Twitter credential errors.
+
 ## Features
 
 ### Google Maps Integration
@@ -231,6 +298,40 @@ The assistant includes YouTube functionality through the YouTube MCP server. Ava
 
 The YouTube integration uses secure OAuth 2.0 authentication and provides comprehensive access to YouTube data through voice commands or text interactions. It respects YouTube's content policies and API quotas while providing rich metadata about videos, channels, and user engagement.
 
+### Twitter Integration
+
+The assistant includes Twitter functionality through the Twitter MCP server. Available features include:
+
+1. Tweet Management:
+   - Post new tweets
+   - Delete tweets
+   - Like/unlike tweets
+   - Retweet/quote tweets
+   - Thread creation
+
+2. Search and Filtering:
+   - Search tweets by keywords
+   - Filter by date range
+   - Search by hashtags
+   - Get trending topics
+   - Advanced search operators
+
+3. User Interactions:
+   - Follow/unfollow users
+   - Get user profiles
+   - View user timelines
+   - List management
+   - Block/mute users
+
+4. Analytics:
+   - Tweet engagement metrics
+   - Follower statistics
+   - Tweet performance
+   - Hashtag tracking
+   - Audience insights
+
+The Twitter integration uses secure OAuth 1.0a authentication and provides comprehensive access to Twitter's API features through voice commands or text interactions.
+
 ## Running the Application
 
 After completing the setup, you can run the application using the following command:
@@ -252,6 +353,7 @@ If you encounter authentication errors:
    - Calendar: `~/.credentials/calendar_token.json`
    - Gmail: `~/.credentials/gmail_token.json`
    - YouTube: `~/.credentials/youtube_token.json`
+   - Twitter: Check your `.env` file for correct credentials
 2. Run the corresponding setup script again
 
 ### Permission Issues
@@ -267,18 +369,15 @@ If you need additional permissions:
 
 ### API Quota
 
-Google APIs have usage quotas. If you hit quota limits:
+Google APIs and Twitter API have usage quotas. If you hit quota limits:
 
-1. Check your [Google Cloud Console](https://console.cloud.google.com/)
-2. Navigate to "APIs & Services" > "Dashboard"
-3. Select the relevant API:
-   - "Google Calendar API"
-   - "Gmail API"
-   - "Distance Matrix API"
-   - "YouTube Data API v3"
-4. View your quota usage and consider upgrading if necessary
+1. Check your respective developer portals:
+   - [Google Cloud Console](https://console.cloud.google.com/)
+   - [Twitter Developer Portal](https://developer.twitter.com/en/portal/dashboard)
+2. Review your API usage and limits
+3. Consider upgrading your API access level if needed
 
-Note: The YouTube Data API has stricter quota limits than other Google APIs. Each API operation costs a certain number of quota points, with a default daily quota of 10,000 points. Plan your usage accordingly.
+Note: Twitter API has different access tiers with varying rate limits and features. Ensure your access level matches your usage requirements.
 
 ### Package Installation Issues
 
@@ -295,3 +394,9 @@ If you encounter issues installing the required packages:
 - The application only requests the minimum permissions needed for each service
 - YouTube content restrictions and age limits are respected
 - All API calls are made over secure HTTPS connections
+- All API credentials are stored securely in your `.env` file
+- Never commit your `.env` file to version control
+- The application only requests the minimum permissions needed for each service
+- Twitter API calls use OAuth 1.0a for secure authentication
+- All API communications are made over secure HTTPS connections
+- Regular monitoring of API usage to prevent quota exhaustion
