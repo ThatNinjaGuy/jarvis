@@ -52,34 +52,40 @@ GOOGLE_API_KEY=your_api_key_here
 
 1. Go to the [Google Cloud Console](https://console.cloud.google.com/)
 2. Create a new project or select an existing one
-3. Enable the Google Calendar API for your project:
+3. Enable the required Google APIs for your project:
    - In the sidebar, navigate to "APIs & Services" > "Library"
-   - Search for "Google Calendar API" and enable it
+   - Search for and enable:
+     - "Google Calendar API"
+     - "Gmail API"
 
 ### 4. Create OAuth 2.0 Credentials
 
 1. In the Google Cloud Console, navigate to "APIs & Services" > "Credentials"
 2. Click "Create Credentials" and select "OAuth client ID"
 3. For application type, select "Desktop application"
-4. Name your OAuth client (e.g., "ADK Voice Calendar Integration")
+4. Name your OAuth client (e.g., "ADK Voice Integration")
 5. Click "Create"
 6. Download the credentials JSON file
 7. Save the file as `credentials.json` in the root directory of this project
 
-### 5. Run the Setup Script
+### 5. Run the Setup Scripts
 
-Run the setup script to authenticate with Google Calendar:
+Run the setup scripts to authenticate with Google services:
 
 ```bash
+# Set up Calendar authentication
 python setup_calendar_auth.py
+
+# Set up Gmail authentication
+python setup_gmail_auth.py
 ```
 
-This will:
+These scripts will:
 
 1. Start the OAuth 2.0 authorization flow
 2. Open your browser to authorize the application
-3. Save the access token securely for future use
-4. Test the connection to your Google Calendar
+3. Save the access tokens securely for future use
+4. Test the connection to the respective Google services
 
 ### 6. SQLite Database Integration
 
@@ -122,6 +128,45 @@ These tools can be used through the voice assistant to interact with the databas
 #### Database Location
 
 The SQLite database file (`database.db`) is stored in the `app/jarvis/mcp_servers/sqllite` directory. This file contains all your application data and can be backed up or moved as needed.
+
+## Features
+
+### Gmail Integration
+
+The assistant includes Gmail functionality through the Gmail MCP server. Available features include:
+
+1. Email Management:
+   - List and search emails with various filters
+   - Get detailed email content including attachments
+   - Send new emails with HTML content and attachments
+   - Delete emails (move to trash or permanent deletion)
+   - Reply to emails (including reply-all)
+
+2. Draft Management:
+   - Create new email drafts
+   - List existing drafts
+   - Update draft content
+   - Delete drafts
+
+The Gmail integration uses secure OAuth 2.0 authentication and provides a comprehensive set of tools for email management through voice commands or text interactions.
+
+### Calendar Integration
+
+The assistant includes Google Calendar functionality through the Google Calendar MCP server. Available features include:
+
+1. Event Management:
+   - Add new events
+   - List existing events
+   - Update event details
+   - Delete events
+
+2. Reminder Management:
+   - Set reminders for events
+   - List upcoming events
+   - Update reminder settings
+   - Delete reminders
+
+The calendar integration uses secure OAuth 2.0 authentication and provides a comprehensive set of tools for event and reminder management through voice commands or text interactions.
 
 ## Running the Application
 
