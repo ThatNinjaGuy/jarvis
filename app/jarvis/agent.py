@@ -12,37 +12,35 @@ warnings.filterwarnings("ignore", message="Pydantic serializer warnings")
 
 from .utils import (
     get_current_time,
-    load_environment,
-    get_twitter_credentials
+    get_twitter_credentials,
 )
 
 # Load environment variables
 load_dotenv()
 
-
-
-# Get Twitter credentials
+# Get credentials
 twitter_env: Dict[str, str] = get_twitter_credentials()
 
 # Get the root directory of the project
 ROOT_DIR = Path(__file__).resolve().parents[2]
 
-# IMPORTANT: Dynamically compute the absolute path to your server.py script
+# IMPORTANT: Dynamically compute the absolute path to your server scripts
 PATH_TO_SQL_LITE_SERVER = str((Path(__file__).parent / "mcp_servers" / "sqllite" / "server.py").resolve())
 PATH_TO_CALENDAR_SERVER = str((Path(__file__).parent / "mcp_servers" / "google_calendar" / "server.py").resolve())
 PATH_TO_GMAIL_SERVER = str((Path(__file__).parent / "mcp_servers" / "gmail" / "server.py").resolve())
 PATH_TO_MAPS_SERVER = str((Path(__file__).parent / "mcp_servers" / "maps" / "server.py").resolve())
 PATH_TO_YOUTUBE_SERVER = str((Path(__file__).parent / "mcp_servers" / "youtube" / "server.py").resolve())
 PATH_TO_TWITTER_SERVER = str(ROOT_DIR / "node_modules" / "@enescinar" / "twitter-mcp")
+PATH_TO_SPOTIFY_SERVER = str((Path(__file__).parent / "mcp_servers" / "spotify" / "server.py").resolve())
 
 root_agent = Agent(
     # A unique name for the agent.
     name="jarvis",
     model="gemini-2.0-flash-exp",
-    description="Agent to help with scheduling, calendar operations, email management, location-based services, YouTube data retrieval, and Twitter interactions.",
+    description="Agent to help with scheduling, calendar operations, email management, location-based services, YouTube data retrieval, Twitter interactions, and Spotify music control.",
     instruction=f"""
     You are Jarvis, a helpful assistant that can perform various tasks 
-    helping with scheduling, calendar operations, database operations, email management, location-based services, YouTube data retrieval, and Twitter interactions.
+    helping with scheduling, calendar operations, database operations, email management, location-based services, YouTube data retrieval, Twitter interactions, and Spotify music control.
     
     ## Calendar Operations
     You can perform calendar operations directly:
@@ -126,6 +124,23 @@ root_agent = Agent(
     - Get trending topics
     - Analyze tweet engagement
     - Monitor hashtags
+
+    ## Spotify Operations
+    You can control Spotify playback and search:
+    - Search for music content:
+      * Tracks
+      * Albums
+      * Artists
+      * Playlists
+    - Get playback information:
+      * Current track
+      * Device details
+      * Playback progress
+    - Control playback:
+      * Play/pause tracks
+      * Skip to next/previous
+      * Seek within track
+      * Select playback device
     
     ## Best Practices
     
@@ -137,6 +152,7 @@ root_agent = Agent(
     - For distance calculations: use driving mode and metric units by default
     - For YouTube searches: default to 10 results ordered by relevance
     - For Twitter searches: default to latest 20 tweets
+    - For Spotify searches: default to tracks with 10 results
     
     2. Response Style:
     - Be concise and direct
@@ -146,6 +162,7 @@ root_agent = Agent(
     - Handle errors gracefully
     - Format video information in an easy-to-read manner
     - Format Twitter data in a clear, readable manner
+    - Present music search results clearly
     
     3. Proactive Assistance:
     - Suggest relevant operations when appropriate
@@ -155,6 +172,7 @@ root_agent = Agent(
     - Consider traffic conditions for travel times
     - Recommend related videos or channels when relevant
     - Suggest relevant hashtags and trending topics
+    - Recommend similar music when searching
     
     4. Security & Privacy:
     - Never expose sensitive email content
@@ -164,6 +182,7 @@ root_agent = Agent(
     - Respect YouTube content restrictions
     - Never expose sensitive Twitter credentials
     - Respect Twitter rate limits
+    - Never expose Spotify authentication details
     
     Important Notes:
     - NEVER show raw tool outputs
@@ -212,11 +231,18 @@ root_agent = Agent(
         ),
         MCPToolset(
             connection_params=StdioServerParameters(
+                command="python3",
+                args=["-m", "app.jarvis.mcp_servers.spotify.server"],
+                cwd=str(ROOT_DIR),
+            )
+        ),
+        MCPToolset(
+            connection_params=StdioServerParameters(
                 command="npx",
                 args=["-y", "@enescinar/twitter-mcp"],
                 env={
                     **{key: str(value) for key, value in os.environ.items()},
-                    **twitter_env  # Use the validated credentials
+                    **twitter_env
                 },
                 cwd=str(ROOT_DIR),
             )

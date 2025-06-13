@@ -91,6 +91,19 @@ def get_twitter_credentials() -> Dict[str, str]:
     
     return credentials
 
+def get_spotify_credentials() -> Dict[str, str]:
+    """
+    Get Spotify API credentials from environment variables.
+    
+    Returns:
+        Dict[str, str]: Dictionary containing Spotify credentials
+    """
+    return {
+        "SPOTIFY_CLIENT_ID": os.getenv("SPOTIFY_CLIENT_ID", ""),
+        "SPOTIFY_CLIENT_SECRET": os.getenv("SPOTIFY_CLIENT_SECRET", ""),
+        "SPOTIFY_REDIRECT_URI": os.getenv("SPOTIFY_REDIRECT_URI", "")
+    }
+
 def load_environment():
     """Load environment variables appropriately for the current environment"""
     if not is_cloud_run():

@@ -215,6 +215,95 @@ uvicorn app.main:app --reload
 
 The server should start without any Twitter credential errors.
 
+### 9. Spotify Integration Setup
+
+#### A. Install Node.js and Spotify MCP Server
+
+1. Install Node.js (if not already installed):
+
+```bash
+# On macOS using Homebrew
+brew install node
+
+# On Ubuntu/Debian
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+# Verify installation
+node --version  # Should output v20.x or higher
+npm --version
+```
+
+2. Install the Spotify MCP server:
+
+```bash
+# Clone the repository
+git clone https://github.com/marcelmarais/spotify-mcp-server.git mcp_servers/spotify
+
+# Install dependencies and build
+cd mcp_servers/spotify
+npm install
+npm run build
+cd ../..
+```
+
+#### B. Get Spotify API Credentials
+
+1. Create a Spotify Developer Account:
+   - Visit [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
+   - Log in with your Spotify account or create one
+   - Accept the Developer Terms of Service
+
+2. Create a New Application:
+   - Click "Create App" in the dashboard
+   - Fill in the application details:
+     - App name: "Jarvis Assistant" (or your preferred name)
+     - App description: Brief description of your application
+     - Redirect URI: <http://localhost:8888/callback>
+     - Website: Optional
+   - Accept the terms and conditions
+
+3. Get Your Credentials:
+   - Once created, click on your app to view its details
+   - You'll find your Client ID and Client Secret
+   - Save these credentials securely
+
+4. Set up Environment Variables:
+   - Update your `.env` file with your Spotify credentials:
+
+```env
+SPOTIFY_CLIENT_ID=your_client_id_here
+SPOTIFY_CLIENT_SECRET=your_client_secret_here
+SPOTIFY_REDIRECT_URI=http://localhost:8888/callback
+```
+
+#### C. Authenticate with Spotify
+
+1. Run the authentication script:
+
+```bash
+cd mcp_servers/spotify
+node build/auth.js  # Using the compiled version from the build directory
+cd ../..
+```
+
+2. Follow the browser prompts:
+   - A browser window will open
+   - Log in to your Spotify account
+   - Authorize the application
+   - The token will be saved automatically
+
+#### D. Verify Installation
+
+Test your Spotify integration:
+
+```bash
+# Start the ADK Voice Assistant
+uvicorn app.main:app --reload
+```
+
+The server should start without any Spotify credential errors.
+
 ## Features
 
 ### Google Maps Integration
@@ -332,6 +421,47 @@ The assistant includes Twitter functionality through the Twitter MCP server. Ava
 
 The Twitter integration uses secure OAuth 1.0a authentication and provides comprehensive access to Twitter's API features through voice commands or text interactions.
 
+### Spotify Integration
+
+The assistant includes Spotify functionality through the Spotify MCP server. Available features include:
+
+1. Playback Control:
+   - Play/pause music
+   - Skip tracks
+   - Adjust volume
+   - Seek within tracks
+   - Queue management
+
+2. Music Discovery:
+   - Search for songs, albums, artists
+   - Browse new releases
+   - Get recommendations
+   - Explore featured playlists
+   - Find similar tracks
+
+3. Playlist Management:
+   - Create new playlists
+   - Add/remove tracks
+   - Reorder songs
+   - Edit playlist details
+   - Collaborative playlist support
+
+4. Library Management:
+   - Save and organize music
+   - Follow artists and playlists
+   - Like/unlike tracks
+   - View listening history
+   - Manage saved albums
+
+5. User Experience:
+   - Real-time playback status
+   - Currently playing information
+   - Device selection
+   - Shuffle and repeat modes
+   - Audio quality settings
+
+The Spotify integration uses OAuth 2.0 authentication and provides comprehensive access to Spotify's features through voice commands or text interactions.
+
 ## Running the Application
 
 After completing the setup, you can run the application using the following command:
@@ -369,23 +499,20 @@ If you need additional permissions:
 
 ### API Quota
 
-Google APIs and Twitter API have usage quotas. If you hit quota limits:
+Various APIs have usage quotas. If you hit quota limits:
 
 1. Check your respective developer portals:
    - [Google Cloud Console](https://console.cloud.google.com/)
    - [Twitter Developer Portal](https://developer.twitter.com/en/portal/dashboard)
+   - [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
 2. Review your API usage and limits
 3. Consider upgrading your API access level if needed
 
-Note: Twitter API has different access tiers with varying rate limits and features. Ensure your access level matches your usage requirements.
+Note: Each API has different rate limits and quotas:
 
-### Package Installation Issues
-
-If you encounter issues installing the required packages:
-
-1. Make sure you're using Python 3.8 or newer
-2. Try upgrading pip: `pip install --upgrade pip`
-3. Install packages individually if a specific package is causing problems
+- Twitter API has different access tiers with varying limits
+- Spotify API uses a quota points system
+- YouTube API uses a quota points system
 
 ## Security Considerations
 
@@ -398,5 +525,6 @@ If you encounter issues installing the required packages:
 - Never commit your `.env` file to version control
 - The application only requests the minimum permissions needed for each service
 - Twitter API calls use OAuth 1.0a for secure authentication
+- Spotify API uses OAuth 2.0 for secure authentication
 - All API communications are made over secure HTTPS connections
 - Regular monitoring of API usage to prevent quota exhaustion
