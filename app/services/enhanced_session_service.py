@@ -41,21 +41,20 @@ class EnhancedSessionService(DatabaseSessionService):
         if not session_id:
             session_id = str(uuid.uuid4())
         
-        # Get user profile and preferences
-        user_profile = await self.user_profile_service.get_user_profile(user_id)
-        user_preferences = await self.user_profile_service.get_user_preferences(user_id)
+        # Get user profile and preferences (always use default user)
+        user_profile = await self.user_profile_service.get_user_profile(DEFAULT_USER_ID)
+        user_preferences = await self.user_profile_service.get_user_preferences(DEFAULT_USER_ID)
         
-        # Get contextual memories
-        context_for_memory = {
-            "query": initial_context.get("initial_query", "") if initial_context else "",
-            "session_topics": initial_context.get("topics", []) if initial_context else [],
-            "recent_tools": []
-        }
-        
-        contextual_memories = await self.memory_service.get_contextual_memories(
-            user_id=user_id,
-            current_context=context_for_memory
-        )
+        # Get contextual memories (with better default context)
+        try:
+            contextual_memories = await self.memory_service.get_contextual_memories(
+                user_id=DEFAULT_USER_ID,
+                current_context={"query": "session initialization", "session_start": True},
+                max_memories=5
+            )
+        except Exception as e:
+            self.logger.warning(f"Failed to get contextual memories: {str(e)}")
+            contextual_memories = {"relevant_memories": [], "context_summary": ""}
         
         # Build enriched context
         enriched_context = {
@@ -74,7 +73,7 @@ class EnhancedSessionService(DatabaseSessionService):
             try:
                 session = await super().create_session(
                     app_name=app_name,
-                    user_id=user_id,
+                    user_id=DEFAULT_USER_ID,  # Always use default user
                     session_id=session_id if attempt == 0 else str(uuid.uuid4())
                 )
                 break
@@ -106,7 +105,7 @@ class EnhancedSessionService(DatabaseSessionService):
                 # Create new session history
                 session_history = SessionHistory(
                     session_id=session.id,
-                    user_id=user_id,
+                    user_id=DEFAULT_USER_ID,  # Always use default user
                     created_at=current_time,
                     session_metadata={
                         "app_name": app_name,
@@ -131,7 +130,7 @@ class EnhancedSessionService(DatabaseSessionService):
         
         # Track session for memory management
         self.active_sessions[session.id] = {
-            "user_id": user_id,
+            "user_id": DEFAULT_USER_ID,  # Always use default user
             "start_time": datetime.utcnow().isoformat(),
             "interactions": [],
             "topics_discussed": [],
@@ -139,7 +138,7 @@ class EnhancedSessionService(DatabaseSessionService):
             "session_context": enriched_context
         }
         
-        self.logger.info(f"Created enhanced session {session.id} for user {user_id}")
+        self.logger.info(f"Created enhanced session {session.id} for default user")
         return session
     
     async def update_session_context(
@@ -157,7 +156,6 @@ class EnhancedSessionService(DatabaseSessionService):
             return
         
         session_data = self.active_sessions[session_id]
-        user_id = session_data["user_id"]
         
         # Record interaction if we have both input and response
         if user_input or agent_response:  # Changed to allow partial updates
@@ -197,7 +195,7 @@ class EnhancedSessionService(DatabaseSessionService):
             
             # Record interaction in user profile service
             await self.user_profile_service.record_interaction(
-                user_id=user_id,
+                user_id=DEFAULT_USER_ID,  # Always use default user
                 session_id=session_id,
                 user_input=user_input or last_interaction.get("user_input", ""),
                 agent_response=agent_response or last_interaction.get("agent_response", ""),
@@ -208,7 +206,10 @@ class EnhancedSessionService(DatabaseSessionService):
             # Learn preferences from complete interactions
             if user_input and agent_response:
                 await self._learn_preferences_from_interaction(
-                    user_id, user_input, agent_response, tools_used
+                    DEFAULT_USER_ID,  # Always use default user
+                    user_input,
+                    agent_response,
+                    tools_used
                 )
         
         # Update session context
@@ -233,7 +234,7 @@ class EnhancedSessionService(DatabaseSessionService):
             if user_input or agent_response:
                 await self._update_contextual_memory(
                     session_id=session_id,
-                    user_id=user_id,
+                    user_id=DEFAULT_USER_ID,  # Always use default user
                     interaction=interaction
                 )
     
@@ -668,11 +669,23 @@ class EnhancedSessionService(DatabaseSessionService):
     async def get_session(self, session_id: str) -> Optional[Session]:
         """Get a session by ID with proper error handling"""
         try:
-            return await super().get_session(session_id)
-        except TypeError:
-            # Handle the case where parent method doesn't accept session_id
-            self.logger.warning(f"Failed to get session {session_id} due to method signature mismatch")
-            return None
+            # Call parent class method with correct signature
+            session = await super().get_session(session_id=session_id)
+            
+            # If session exists, enrich it with our tracked data
+            if session and session_id in self.active_sessions:
+                session_data = self.active_sessions[session_id]
+                session.state.update({
+                    "session_stats": {
+                        "interactions_count": len(session_data["interactions"]),
+                        "tools_used": list(session_data["tools_used"]),
+                        "topics_discussed": list(set(session_data["topics_discussed"])),
+                        "session_duration": (datetime.utcnow() - datetime.fromisoformat(session_data["start_time"])).seconds
+                    }
+                })
+            
+            return session
+        
         except Exception as e:
             self.logger.error(f"Error getting session {session_id}: {str(e)}")
-            return None 
+            return None

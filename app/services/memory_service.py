@@ -15,6 +15,7 @@ import numpy as np
 from sqlalchemy.orm import Session as DBSession
 
 from app.models.database import MemoryVector
+from app.config.constants import DEFAULT_USER_ID
 
 class JarvisMemoryService:
     def __init__(self, db_session: DBSession, collection_name: str = "jarvis_memory"):
@@ -80,7 +81,7 @@ class JarvisMemoryService:
     
     async def store_memory(
         self,
-        user_id: str,
+        user_id: str,  # This will be ignored
         content: str,
         memory_type: str = "conversation",
         session_id: Optional[str] = None,
@@ -99,22 +100,16 @@ class JarvisMemoryService:
         # Generate a summary for long content
         content_summary = await self._generate_content_summary(content) if len(content) > 200 else content
         
-        # Calculate memory importance if not provided
-        if importance_score == 0.5:  # Default value
-            importance_score = self._calculate_memory_importance(content, memory_type, metadata)
-        
-        # Handle tags properly
-        if isinstance(tags, str):
-            tags = [tag.strip() for tag in tags.split(",")]
+        # Convert tags to string if needed
+        tags_str = tags
+        if isinstance(tags, list):
+            tags_str = ", ".join(tags)
         elif tags is None:
-            tags = []
+            tags_str = ""
         
-        # Convert tags to string for ChromaDB metadata
-        tags_str = ",".join(tags) if tags else ""
-        
-        # Prepare enhanced metadata
+        # Create memory metadata
         memory_metadata = {
-            "user_id": user_id,
+            "user_id": DEFAULT_USER_ID,  # Always use default user
             "memory_type": memory_type,
             "session_id": session_id or "",
             "importance_score": float(importance_score),
@@ -143,7 +138,7 @@ class JarvisMemoryService:
             
             # Store reference in SQL database
             memory_vector = MemoryVector(
-                user_id=user_id,
+                user_id=DEFAULT_USER_ID,  # Always use default user
                 session_id=session_id,
                 content=content,
                 content_summary=content_summary,
@@ -159,17 +154,17 @@ class JarvisMemoryService:
             await self._update_related_memories(memory_vector)
             
             # Cleanup old memories if needed
-            await self._cleanup_old_memories(user_id)
+            await self._cleanup_old_memories(DEFAULT_USER_ID)  # Always use default user
             
             self.db.commit()
+            self.logger.info(f"Stored memory {memory_id} for default user")
             
-            self.logger.info(f"Stored memory {memory_id} for user {user_id}")
             return memory_id
             
         except Exception as e:
             self.logger.error(f"Error storing memory: {str(e)}")
             self.db.rollback()
-            raise
+            return None
     
     def _calculate_memory_importance(
         self,
@@ -319,63 +314,104 @@ class JarvisMemoryService:
     
     async def search_memories(
         self,
-        user_id: str,
+        user_id: str,  # This will be ignored
         query: str,
-        memory_types: List[str] = None,
-        limit: int = 5,
-        importance_threshold: float = 0.0
+        limit: int = 10,
+        memory_type: Optional[str] = None,
+        min_importance: float = 0.0
     ) -> List[Dict[str, Any]]:
         """Search for relevant memories using semantic similarity"""
-        
         try:
-            # Generate query embedding using Vertex AI
+            # Log the search request
+            self.logger.info(f"Searching memories with query: '{query}', type: {memory_type}, min_importance: {min_importance}")
+            
+            # Get embedding for query
             query_embedding = await self._get_embedding(query)
+            self.logger.debug(f"Generated embedding for query: {query[:50]}...")
             
-            # Prepare where clause for filtering
-            where_clause = {"user_id": user_id}
-            if memory_types:
-                where_clause["memory_type"] = {"$in": memory_types}
-            if importance_threshold > 0:
-                where_clause["importance_score"] = {"$gte": importance_threshold}
+            # Build where clause with proper operator syntax
+            conditions = []
+            conditions.append({"user_id": DEFAULT_USER_ID})
             
-            # Search in ChromaDB
+            if memory_type:
+                conditions.append({"memory_type": memory_type})
+            
+            if min_importance > 0:
+                conditions.append({"importance_score": {"$gte": min_importance}})
+            
+            # Use $and operator to combine conditions
+            where = {"$and": conditions} if len(conditions) > 1 else conditions[0]
+            self.logger.debug(f"Search filters: {where}")
+            
+            # Search in ChromaDB with increased limit for better recall
             results = self.collection.query(
                 query_embeddings=[query_embedding],
-                n_results=limit,
-                where=where_clause,
-                include=["documents", "metadatas", "distances"]
+                n_results=min(limit * 2, 20),  # Double the requested limit but cap at 20
+                where=where
             )
             
+            self.logger.debug(f"Raw search results: {results}")
+            
             memories = []
-            if results and results["documents"]:
-                for i, (doc, metadata, distance) in enumerate(zip(
+            if not results or not results.get("documents"):
+                self.logger.warning(f"No results found for query: {query}")
+                # Try a fallback search without memory type filter if no results
+                if memory_type:
+                    self.logger.info("Attempting fallback search without memory type filter")
+                    where = {"user_id": DEFAULT_USER_ID}  # Only keep user filter
+                    results = self.collection.query(
+                        query_embeddings=[query_embedding],
+                        n_results=min(limit * 2, 20),
+                        where=where
+                    )
+            
+            if results and results.get("documents"):
+                # Process results with more lenient distance threshold
+                distances = results.get("distances", [[]])[0] if results.get("distances") else []
+                
+                for idx, (doc, metadata) in enumerate(zip(
                     results["documents"][0],
-                    results["metadatas"][0],
-                    results["distances"][0]
+                    results["metadatas"][0]
                 )):
-                    memories.append({
-                        "content": doc,
-                        "metadata": metadata,
-                        "relevance_score": 1 - distance,  # Convert distance to similarity
-                        "memory_type": metadata.get("memory_type", "unknown"),
-                        "importance_score": metadata.get("importance_score", 0.0),
-                        "timestamp": metadata.get("timestamp"),
-                        "tags": metadata.get("tags", [])
-                    })
+                    # Calculate similarity score - if distances not available, use a default high score
+                    similarity = 1 - distances[idx] if distances else 0.8
+                    
+                    # Log the match details
+                    self.logger.debug(f"Memory match: similarity={similarity:.3f}, type={metadata.get('memory_type')}")
+                    self.logger.debug(f"Content preview: {doc[:100]}...")
+                    
+                    # Include results with lower similarity threshold
+                    if similarity > 0.3:  # More lenient threshold
+                        memories.append({
+                            "content": doc,
+                            "metadata": metadata,
+                            "relevance_score": similarity,
+                            "memory_type": metadata.get("memory_type", "unknown"),
+                            "importance_score": metadata.get("importance_score", 0.0),
+                            "timestamp": metadata.get("timestamp"),
+                            "tags": metadata.get("tags", [])
+                        })
+                
+                # Sort by relevance and limit results
+                memories.sort(key=lambda x: x["relevance_score"], reverse=True)
+                memories = memories[:limit]
+                
+                # Update access count for retrieved memories
+                if results.get("ids"):
+                    await self._update_memory_access(results["ids"][0][:len(memories)])
+                
+                self.logger.info(f"Retrieved {len(memories)} memories with relevance scores: " + 
+                               ", ".join([f"{m['relevance_score']:.2f}" for m in memories]))
             
-            # Update access count for retrieved memories
-            await self._update_memory_access(results.get("ids", [[]])[0] if results else [])
-            
-            self.logger.debug(f"Retrieved {len(memories)} memories for query: {query[:50]}...")
             return memories
             
         except Exception as e:
-            self.logger.error(f"Error searching memories: {str(e)}")
+            self.logger.error(f"Error searching memories: {str(e)}", exc_info=True)
             return []
     
     async def get_contextual_memories(
         self,
-        user_id: str,
+        user_id: str,  # This will be ignored
         current_context: Dict[str, Any],
         max_memories: int = 10
     ) -> Dict[str, Any]:
@@ -384,23 +420,56 @@ class JarvisMemoryService:
         # Extract context elements for search
         context_elements = []
         
+        # Process query with more weight
         if "query" in current_context:
-            context_elements.append(current_context["query"])
+            query = current_context["query"]
+            context_elements.append(query)  # Add original query
+            # Add variations for better matching
+            context_elements.append(f"user asked about {query}")
+            context_elements.append(f"information about {query}")
         
+        # Add session topics with explicit context
         if "session_topics" in current_context:
-            context_elements.extend(current_context["session_topics"])
-            
+            for topic in current_context["session_topics"]:
+                context_elements.append(f"topic: {topic}")
+                context_elements.append(f"discussed {topic}")
+        
+        # Add tool context
         if "recent_tools" in current_context:
-            context_elements.extend([f"using {tool}" for tool in current_context["recent_tools"]])
+            for tool in current_context["recent_tools"]:
+                context_elements.append(f"using {tool}")
+                context_elements.append(f"tool: {tool}")
         
+        # Build search query with weighted elements
         search_query = " ".join(context_elements) if context_elements else "general conversation"
+        self.logger.info(f"Built context query: {search_query}")
         
-        # Search for relevant memories
-        memories = await self.search_memories(
-            user_id=user_id,
-            query=search_query,
-            limit=max_memories
-        )
+        # Try different memory types in priority order
+        memory_types = ["fact", "preference", "conversation"]
+        all_memories = []
+        
+        for memory_type in memory_types:
+            # Search with current memory type
+            memories = await self.search_memories(
+                user_id=DEFAULT_USER_ID,  # Always use default user
+                query=search_query,
+                limit=max_memories,
+                memory_type=memory_type,
+                min_importance=0.0  # No minimum importance to get more results
+            )
+            all_memories.extend(memories)
+        
+        # Deduplicate memories based on content
+        seen_contents = set()
+        unique_memories = []
+        for memory in all_memories:
+            if memory["content"] not in seen_contents:
+                seen_contents.add(memory["content"])
+                unique_memories.append(memory)
+        
+        # Sort by relevance and limit
+        unique_memories.sort(key=lambda x: x["relevance_score"], reverse=True)
+        unique_memories = unique_memories[:max_memories]
         
         # Categorize memories by type
         categorized_memories = {
@@ -410,23 +479,29 @@ class JarvisMemoryService:
             "experience": []
         }
         
-        for memory in memories:
+        for memory in unique_memories:
             memory_type = memory.get("memory_type", "conversation")
             if memory_type in categorized_memories:
                 categorized_memories[memory_type].append(memory)
         
         # Generate context summary
-        context_summary = await self._generate_context_summary(memories)
+        context_summary = await self._generate_context_summary(unique_memories)
         
         # Extract preferences from memories
-        preferences = await self._extract_preferences_from_memories(memories)
+        preferences = await self._extract_preferences_from_memories(unique_memories)
+        
+        # Log retrieval results
+        self.logger.info(f"Retrieved {len(unique_memories)} unique memories")
+        for memory_type, memories in categorized_memories.items():
+            if memories:
+                self.logger.info(f"- {memory_type}: {len(memories)} memories")
         
         return {
-            "relevant_memories": memories,
+            "relevant_memories": unique_memories,
             "categorized_memories": categorized_memories,
             "context_summary": context_summary,
             "inferred_preferences": preferences,
-            "memory_count": len(memories)
+            "memory_count": len(unique_memories)
         }
     
     async def store_session_memory(

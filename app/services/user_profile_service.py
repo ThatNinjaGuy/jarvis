@@ -4,6 +4,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session as DBSession
 from sqlalchemy import and_, desc
 from app.models.database import UserProfile, UserPreference, LifeEvent, SessionHistory, SessionInteraction
+from app.config.constants import DEFAULT_USER_ID
 
 class UserProfileService:
     def __init__(self, db_session: DBSession):
@@ -12,17 +13,18 @@ class UserProfileService:
     
     async def get_user_profile(self, user_id: str) -> Dict[str, Any]:
         """Get complete user profile with preferences and statistics"""
-        profile = self.db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+        # Always use default user ID
+        profile = self.db.query(UserProfile).filter(UserProfile.user_id == DEFAULT_USER_ID).first()
         if not profile:
-            profile = await self.create_user_profile(user_id)
+            profile = await self.create_user_profile(DEFAULT_USER_ID)
         
         # Get recent session count
         recent_sessions = self.db.query(SessionHistory).filter(
-            SessionHistory.user_id == user_id
+            SessionHistory.user_id == DEFAULT_USER_ID
         ).count()
         
         return {
-            "user_id": profile.user_id,
+            "user_id": DEFAULT_USER_ID,
             "preferences": profile.preferences,
             "interaction_stats": {
                 **profile.interaction_stats,
@@ -35,8 +37,9 @@ class UserProfileService:
     
     async def create_user_profile(self, user_id: str) -> UserProfile:
         """Create a new user profile with default settings"""
+        # Always use default user ID
         profile = UserProfile(
-            user_id=user_id,
+            user_id=DEFAULT_USER_ID,
             preferences={
                 "communication_style": "professional",
                 "response_length": "medium",
@@ -58,12 +61,13 @@ class UserProfileService:
         )
         self.db.add(profile)
         self.db.commit()
-        self.logger.info(f"Created new user profile for {user_id}")
+        self.logger.info(f"Created new default user profile")
         return profile
     
     async def get_user_preferences(self, user_id: str, category: Optional[str] = None) -> List[Dict[str, Any]]:
         """Get user preferences, optionally filtered by category"""
-        query = self.db.query(UserPreference).filter(UserPreference.user_id == user_id)
+        # Always use default user ID
+        query = self.db.query(UserPreference).filter(UserPreference.user_id == DEFAULT_USER_ID)
         
         if category:
             query = query.filter(UserPreference.preference_category == category)
@@ -92,9 +96,10 @@ class UserProfileService:
         category: str = "general"
     ):
         """Update or create a user preference"""
+        # Always use default user ID
         existing = self.db.query(UserPreference).filter(
             and_(
-                UserPreference.user_id == user_id,
+                UserPreference.user_id == DEFAULT_USER_ID,
                 UserPreference.preference_key == key
             )
         ).first()
@@ -113,10 +118,10 @@ class UserProfileService:
             existing.preference_category = category
             existing.last_reinforced = datetime.utcnow()
             
-            self.logger.info(f"Updated preference {key} for user {user_id}")
+            self.logger.info(f"Updated preference {key} for default user")
         else:
             new_pref = UserPreference(
-                user_id=user_id,
+                user_id=DEFAULT_USER_ID,
                 preference_key=key,
                 preference_value=value,
                 confidence_score=confidence,
@@ -124,7 +129,7 @@ class UserProfileService:
                 preference_category=category
             )
             self.db.add(new_pref)
-            self.logger.info(f"Created new preference {key} for user {user_id}")
+            self.logger.info(f"Created new preference {key} for default user")
         
         self.db.commit()
     
@@ -138,6 +143,7 @@ class UserProfileService:
         context_data: Dict[str, Any] = None
     ):
         """Record a user-agent interaction"""
+        # Always use default user ID
         interaction = SessionInteraction(
             session_id=session_id,
             user_input=user_input,
@@ -148,7 +154,7 @@ class UserProfileService:
         self.db.add(interaction)
         
         # Update user interaction stats
-        profile = self.db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+        profile = self.db.query(UserProfile).filter(UserProfile.user_id == DEFAULT_USER_ID).first()
         if profile:
             stats = profile.interaction_stats
             stats["total_interactions"] = stats.get("total_interactions", 0) + 1
@@ -164,7 +170,7 @@ class UserProfileService:
             profile.updated_at = datetime.utcnow()
         
         self.db.commit()
-        self.logger.debug(f"Recorded interaction for user {user_id} in session {session_id}")
+        self.logger.debug(f"Recorded interaction for default user in session {session_id}")
     
     async def add_life_event(
         self,
@@ -176,8 +182,9 @@ class UserProfileService:
         tags: List[str] = None
     ):
         """Add a significant life event for the user"""
+        # Always use default user ID
         life_event = LifeEvent(
-            user_id=user_id,
+            user_id=DEFAULT_USER_ID,
             event_type=event_type,
             event_data=event_data,
             event_date=event_date or datetime.utcnow(),
@@ -186,7 +193,7 @@ class UserProfileService:
         )
         self.db.add(life_event)
         self.db.commit()
-        self.logger.info(f"Added life event {event_type} for user {user_id}")
+        self.logger.info(f"Added life event {event_type} for default user")
     
     async def get_life_events(
         self,
@@ -195,7 +202,8 @@ class UserProfileService:
         limit: int = 10
     ) -> List[Dict[str, Any]]:
         """Get user's life events"""
-        query = self.db.query(LifeEvent).filter(LifeEvent.user_id == user_id)
+        # Always use default user ID
+        query = self.db.query(LifeEvent).filter(LifeEvent.user_id == DEFAULT_USER_ID)
         
         if event_type:
             query = query.filter(LifeEvent.event_type == event_type)
@@ -221,20 +229,22 @@ class UserProfileService:
         style_updates: Dict[str, Any]
     ):
         """Update user's communication style preferences"""
-        profile = self.db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+        # Always use default user ID
+        profile = self.db.query(UserProfile).filter(UserProfile.user_id == DEFAULT_USER_ID).first()
         if profile:
             current_style = profile.communication_style
             current_style.update(style_updates)
             profile.communication_style = current_style
             profile.updated_at = datetime.utcnow()
             self.db.commit()
-            self.logger.info(f"Updated communication style for user {user_id}")
+            self.logger.info(f"Updated communication style for default user")
     
     async def get_session_summary(self, user_id: str, session_id: str) -> Dict[str, Any]:
         """Get detailed session summary with interactions"""
+        # Always use default user ID
         session = self.db.query(SessionHistory).filter(
             and_(
-                SessionHistory.user_id == user_id,
+                SessionHistory.user_id == DEFAULT_USER_ID,
                 SessionHistory.session_id == session_id
             )
         ).first()

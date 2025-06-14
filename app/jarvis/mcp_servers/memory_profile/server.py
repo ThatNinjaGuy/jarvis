@@ -280,17 +280,42 @@ async def _search_memories(arguments: dict) -> dict:
     """Search user memories"""
     user_id = arguments["user_id"]
     query = arguments["query"]
-    memory_types = arguments.get("memory_types")
+    memory_types = arguments.get("memory_types", [])
     limit = arguments.get("limit", 5)
     importance_threshold = arguments.get("importance_threshold", 0.0)
     
-    memories = await memory_service.search_memories(
-        user_id=user_id,
-        query=query,
-        memory_types=memory_types,
-        limit=limit,
-        importance_threshold=importance_threshold
-    )
+    # If memory_types is provided, search for each type and combine results
+    all_memories = []
+    if memory_types:
+        for memory_type in memory_types:
+            memories = await memory_service.search_memories(
+                user_id=user_id,
+                query=query,
+                limit=limit,
+                memory_type=memory_type,
+                min_importance=importance_threshold
+            )
+            all_memories.extend(memories)
+            
+        # Deduplicate memories based on content
+        seen_contents = set()
+        unique_memories = []
+        for memory in all_memories:
+            if memory["content"] not in seen_contents:
+                seen_contents.add(memory["content"])
+                unique_memories.append(memory)
+                
+        # Sort by relevance and limit
+        unique_memories.sort(key=lambda x: x["relevance_score"], reverse=True)
+        memories = unique_memories[:limit]
+    else:
+        # If no memory types specified, do a single search
+        memories = await memory_service.search_memories(
+            user_id=user_id,
+            query=query,
+            limit=limit,
+            min_importance=importance_threshold
+        )
     
     return {
         "user_id": user_id,
