@@ -20,6 +20,19 @@ class UserProfile(Base):
     preferences_records = relationship("UserPreference", back_populates="user")
     life_events = relationship("LifeEvent", back_populates="user")
 
+def _ensure_json_serializable(obj):
+    """Recursively convert a dictionary to ensure all values are JSON serializable."""
+    if isinstance(obj, dict):
+        return {key: _ensure_json_serializable(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [_ensure_json_serializable(item) for item in obj]
+    elif isinstance(obj, datetime):
+        return obj.isoformat()
+    elif isinstance(obj, (str, int, float, bool, type(None))):
+        return obj
+    else:
+        return str(obj)
+
 class SessionHistory(Base):
     __tablename__ = 'session_history'
     
@@ -35,6 +48,30 @@ class SessionHistory(Base):
     
     user = relationship("UserProfile", back_populates="sessions")
     interactions = relationship("SessionInteraction", back_populates="session")
+    
+    def __init__(self, **kwargs):
+        """Initialize with JSON serializable data"""
+        if 'session_metadata' in kwargs:
+            kwargs['session_metadata'] = _ensure_json_serializable(kwargs['session_metadata'])
+        if 'topics_discussed' in kwargs:
+            kwargs['topics_discussed'] = _ensure_json_serializable(kwargs['topics_discussed'])
+        if 'outcomes' in kwargs:
+            kwargs['outcomes'] = _ensure_json_serializable(kwargs['outcomes'])
+        super().__init__(**kwargs)
+    
+    def to_dict(self):
+        """Convert to dictionary with JSON-safe values"""
+        return {
+            "session_id": self.session_id,
+            "user_id": self.user_id,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "ended_at": self.ended_at.isoformat() if self.ended_at else None,
+            "session_summary": self.session_summary,
+            "topics_discussed": self.topics_discussed,
+            "outcomes": self.outcomes,
+            "session_metadata": self.session_metadata,
+            "is_active": self.is_active
+        }
 
 class SessionInteraction(Base):
     __tablename__ = 'session_interactions'

@@ -1,4 +1,4 @@
-from app.api.enhanced_routes import app
+from app.api.routes import app
 import uvicorn
 import os
 from dotenv import load_dotenv

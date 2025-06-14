@@ -1,8 +1,10 @@
 import logging
+import uuid
 from typing import Dict, Any, Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 from google.adk.sessions import DatabaseSessionService, Session
 from sqlalchemy.orm import Session as DBSession
+from sqlalchemy.exc import IntegrityError
 
 from app.models.database import SessionHistory, UserProfile
 from app.services.user_profile_service import UserProfileService
@@ -34,6 +36,10 @@ class EnhancedSessionService(DatabaseSessionService):
     ) -> Session:
         """Create session with enriched user context and memory"""
         
+        # Generate unique session ID if not provided
+        if not session_id:
+            session_id = str(uuid.uuid4())
+        
         # Get user profile and preferences
         user_profile = await self.user_profile_service.get_user_profile(user_id)
         user_preferences = await self.user_profile_service.get_user_preferences(user_id)
@@ -61,35 +67,47 @@ class EnhancedSessionService(DatabaseSessionService):
             "session_start_time": datetime.utcnow().isoformat()
         }
         
-        # Create ADK session (without state_context as it's not supported)
-        session = await self.create_session(
-            app_name=app_name,
-            user_id=user_id,
-            session_id=session_id
-        )
+        # Create ADK session with retry logic for unique constraint
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                session = await self.create_session(
+                    app_name=app_name,
+                    user_id=user_id,
+                    session_id=session_id if attempt == 0 else str(uuid.uuid4())
+                )
+                break
+            except IntegrityError:
+                if attempt == max_retries - 1:
+                    raise
+                continue
         
-        # Store enriched context in our session tracking
-        # (The ADK session doesn't support custom state_context, so we manage it ourselves)
-        
-        # Create session history record
-        session_history = SessionHistory(
-            session_id=session.id,
-            user_id=user_id,
-            session_metadata={
-                "app_name": app_name,
-                "context_memories_count": len(contextual_memories.get("relevant_memories", [])),
-                "user_preferences_count": len(user_preferences),
-                "initial_context": initial_context
-            }
-        )
-        
-        self.db_session.add(session_history)
-        self.db_session.commit()
+        # Create session history record with JSON-safe data
+        try:
+            current_time = datetime.utcnow()
+            session_history = SessionHistory(
+                session_id=session.id,
+                user_id=user_id,
+                created_at=current_time,
+                session_metadata={
+                    "app_name": app_name,
+                    "context_memories_count": len(contextual_memories.get("relevant_memories", [])),
+                    "user_preferences_count": len(user_preferences),
+                    "initial_context": initial_context or {},
+                    "start_time": current_time.isoformat()
+                }
+            )
+            
+            self.db_session.add(session_history)
+            self.db_session.commit()
+        except Exception as e:
+            self.logger.error(f"Failed to create session history: {str(e)}")
+            # Continue anyway as this is not critical
         
         # Track session for memory management
         self.active_sessions[session.id] = {
             "user_id": user_id,
-            "start_time": datetime.utcnow(),
+            "start_time": datetime.utcnow().isoformat(),
             "interactions": [],
             "topics_discussed": [],
             "tools_used": set(),
@@ -168,14 +186,14 @@ class EnhancedSessionService(DatabaseSessionService):
                 "interactions_count": len(session_data["interactions"]),
                 "tools_used": list(session_data["tools_used"]),
                 "topics_discussed": list(set(session_data["topics_discussed"])),
-                "session_duration": (datetime.utcnow() - session_data["start_time"]).seconds
+                "session_duration": (datetime.utcnow() - datetime.fromisoformat(session_data["start_time"])).seconds
             }
             
             # Update memory context if significant interaction
             if user_input and len(user_input) > 50:  # Significant interaction threshold
                 await self._update_contextual_memory(session_id, user_id, interaction)
     
-    async def end_session_with_memory_capture(self, session_id: str) -> Optional[Session]:
+    async def end_session_with_memory_capture(self, session_id: str) -> Optional[Dict[str, Any]]:
         """End session and capture memories and insights"""
         
         session = await self.get_session(session_id)
@@ -190,31 +208,33 @@ class EnhancedSessionService(DatabaseSessionService):
             session_insights = await self._extract_session_insights(session_data)
             
             # Update session history
-            await self._update_session_history(session_id, session_insights)
+            session_history = await self._update_session_history(session_id, session_insights)
             
-            # Store session memories
-            await self.memory_service.store_session_memory(
-                session_id=session_id,
-                user_id=user_id,
-                session_data={
-                    "summary": session_insights["summary"],
-                    "topics": session_insights["topics"],
-                    "tools_used": list(session_data["tools_used"]),
-                    "interactions": session_data["interactions"],
-                    "outcomes": session_insights["outcomes"],
-                    "session_length": (datetime.utcnow() - session_data["start_time"]).seconds
-                }
-            )
-            
-            # Update user preferences based on session
-            await self._update_user_preferences_from_session(user_id, session_data, session_insights)
-            
-            # Clean up active session
-            del self.active_sessions[session_id]
-            
-            self.logger.info(f"Ended session {session_id} with memory capture for user {user_id}")
+            if session_history:
+                # Store session memories
+                await self.memory_service.store_session_memory(
+                    session_id=session_id,
+                    user_id=user_id,
+                    session_data={
+                        "summary": session_insights["summary"],
+                        "topics": session_insights["topics"],
+                        "tools_used": list(session_data["tools_used"]),
+                        "interactions": session_data["interactions"],
+                        "outcomes": session_insights["outcomes"],
+                        "session_length": session_insights["session_duration"]
+                    }
+                )
+                
+                # Update user preferences based on session
+                await self._update_user_preferences_from_session(user_id, session_data, session_insights)
+                
+                # Clean up active session
+                del self.active_sessions[session_id]
+                
+                self.logger.info(f"Ended session {session_id} with memory capture for user {user_id}")
+                return session_history.to_dict()
         
-        return session
+        return None
     
     async def _extract_session_insights(self, session_data: Dict[str, Any]) -> Dict[str, Any]:
         """Extract key insights from session data"""
@@ -256,7 +276,7 @@ class EnhancedSessionService(DatabaseSessionService):
             "topics": topics,
             "outcomes": outcomes,
             "total_interactions": len(interactions),
-            "session_duration": (datetime.utcnow() - session_data["start_time"]).seconds,
+            "session_duration": (datetime.utcnow() - datetime.fromisoformat(session_data["start_time"])).seconds,
             "tools_effectiveness": self._calculate_tools_effectiveness(interactions, tools_used)
         }
     
@@ -284,6 +304,8 @@ class EnhancedSessionService(DatabaseSessionService):
             session_history.session_metadata = metadata
             
             self.db_session.commit()
+        
+        return session_history
     
     async def _learn_preferences_from_interaction(
         self,
