@@ -4,6 +4,13 @@ This document explains how to set up and use the Jarvis Assistant. This has mult
 
 ## Setup Instructions
 
+## Prerequisities
+
+Cleanup is required before running the code.
+
+1. Delete the DB's and DB folder for the root.
+
+
 ### 1. Install Dependencies
 
 First, create a virtual environment:
