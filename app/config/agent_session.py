@@ -15,6 +15,8 @@ from app.services.user_profile_service import UserProfileService
 from app.services.memory_service import JarvisMemoryService
 from app.services.enhanced_session_service import EnhancedSessionService
 
+import asyncio
+
 # Setup cloud logging
 setup_cloud_logging()
 
@@ -32,11 +34,16 @@ APP_NAME = "Jarvis"
 session_service = InMemorySessionService()
 
 # Initialize enhanced memory system
-try:
-    import asyncio
+MEMORY_ENABLED = False
+user_profile_service = None
+memory_service = None
+enhanced_session_service = None
+
+async def initialize_memory_system():
+    """Initialize the memory system asynchronously"""
+    global MEMORY_ENABLED, user_profile_service, memory_service, enhanced_session_service
     
-    async def init_memory_system():
-        """Initialize memory system with timeout"""
+    try:
         db_config.create_tables()
         db_session = next(db_config.get_db_session())
         
@@ -44,16 +51,15 @@ try:
         user_profile_service = UserProfileService(db_session)
         memory_service = JarvisMemoryService(db_session)
         
-        # Test memory service connection (this might hang on Vertex AI)
+        # Test memory service connection
         try:
-            # Quick test to see if memory service works
             await asyncio.wait_for(
                 memory_service.search_memories(
                     user_id="test",
                     query="test connection",
                     limit=1
                 ),
-                timeout=5.0  # 5 second timeout
+                timeout=5.0
             )
         except asyncio.TimeoutError:
             raise Exception("Memory service connection timed out")
@@ -69,35 +75,15 @@ try:
             memory_service=memory_service
         )
         
-        return user_profile_service, memory_service, enhanced_session_service
-    
-    # Run initialization with timeout
-    try:
-        user_profile_service, memory_service, enhanced_session_service = asyncio.run(
-            asyncio.wait_for(init_memory_system(), timeout=10.0)
-        )
         MEMORY_ENABLED = True
         logging.info("Enhanced memory system initialized successfully")
-    except asyncio.TimeoutError:
-        logging.warning("Memory system initialization timed out, falling back to basic mode")
-        enhanced_session_service = None
-        user_profile_service = None
-        memory_service = None
-        MEMORY_ENABLED = False
+        
     except Exception as e:
         logging.warning(f"Memory system initialization failed: {str(e)}")
-        enhanced_session_service = None
+        MEMORY_ENABLED = False
         user_profile_service = None
         memory_service = None
-        MEMORY_ENABLED = False
-        
-except Exception as e:
-    logging.warning(f"Memory system initialization failed, falling back to basic mode: {str(e)}")
-    enhanced_session_service = None
-    user_profile_service = None
-    memory_service = None
-    MEMORY_ENABLED = False
-
+        enhanced_session_service = None
 
 async def start_agent_session(session_id, is_audio=False, use_memory=True):  # Re-enable memory
     """Starts an agent session and returns the necessary components for communication

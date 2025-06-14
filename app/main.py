@@ -2,10 +2,16 @@ from app.api.enhanced_routes import app
 import uvicorn
 import os
 from dotenv import load_dotenv
+from app.config.agent_session import initialize_memory_system
 
 # Load environment variables
 if not os.environ.get("K_SERVICE"):  # Not running in Cloud Run
     load_dotenv()
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize services on startup"""
+    await initialize_memory_system()
 
 if __name__ == "__main__":
     # Get port from environment or default to 8000
