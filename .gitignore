@@ -1,0 +1,7 @@
+.env
+__pycache__/
+.venv/
+*.json
+.vscode/
+mcp_calendar_server/venv/
+token.pickle
