@@ -9,7 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from app.models.database import SessionHistory, UserProfile
 from app.services.user_profile_service import UserProfileService
 from app.services.memory_service import JarvisMemoryService
-from app.config.constants import DEFAULT_USER_ID  # Import from constants instead
+from app.config.constants import DEFAULT_USER_ID, APP_NAME  # Import from constants instead
 
 class EnhancedSessionService(DatabaseSessionService):
     def __init__(
@@ -216,7 +216,11 @@ class EnhancedSessionService(DatabaseSessionService):
         session_data["session_context"].update(new_context)
         
         # Get updated session from ADK
-        session = await self.get_session(session_id)
+        session = await self.get_session(
+            session_id=session_id,
+            app_name=APP_NAME,
+            user_id=DEFAULT_USER_ID
+        )
         if session:
             # Update session state with new context
             updated_state = session.state.copy()
@@ -608,25 +612,128 @@ class EnhancedSessionService(DatabaseSessionService):
         
         # Lower threshold to capture more interactions
         if interaction.get("importance_score", 0) > 0.3:  # Lowered from 0.6
-            # Create a more detailed memory content
-            memory_content = (
-                f"User: {interaction['user_input']}\n"
-                f"Assistant: {interaction['agent_response']}\n"
-                f"Tools Used: {', '.join(interaction.get('tools_used', []) or ['none'])}"
-            )
+            # Extract key information from the interaction
+            user_input = interaction['user_input']
+            agent_response = interaction['agent_response']
             
-            await self.memory_service.store_memory(
-                user_id=DEFAULT_USER_ID,  # Always use default user
-                content=memory_content,
-                memory_type="conversation",
-                session_id=session_id,
-                importance_score=interaction["importance_score"],
-                tags=interaction.get("tools_used", []),
-                metadata={
-                    "timestamp": interaction.get("timestamp", datetime.utcnow().isoformat()),
-                    "interaction_type": "dialogue"
-                }
-            )
+            # Extract facts and preferences
+            facts = []
+            preferences = []
+            
+            # Look for facts in user input (statements about themselves)
+            fact_indicators = ["I am", "I'm", "my name is", "I work", "I live"]
+            for indicator in fact_indicators:
+                if indicator.lower() in user_input.lower():
+                    # Get the sentence containing the fact
+                    sentences = user_input.split('.')
+                    for sentence in sentences:
+                        if indicator.lower() in sentence.lower():
+                            facts.append(sentence.strip())
+            
+            # Look for preferences in user input
+            preference_indicators = ["I prefer", "I like", "I want", "I need", "I don't like"]
+            for indicator in preference_indicators:
+                if indicator.lower() in user_input.lower():
+                    sentences = user_input.split('.')
+                    for sentence in sentences:
+                        if indicator.lower() in sentence.lower():
+                            preferences.append(sentence.strip())
+            
+            # If we found facts or preferences, store them separately
+            for fact in facts:
+                # Check if this fact already exists
+                existing_memories = await self.memory_service.search_memories(
+                    user_id=DEFAULT_USER_ID,
+                    query=fact,
+                    memory_type="fact",
+                    limit=1
+                )
+                
+                if not existing_memories or not any(
+                    memory["content"] == fact for memory in existing_memories
+                ):
+                    await self.memory_service.store_memory(
+                        user_id=DEFAULT_USER_ID,
+                        content=fact,
+                        memory_type="fact",
+                        session_id=session_id,
+                        importance_score=0.8,  # Facts are important
+                        tags=["fact", "user_information"],
+                        metadata={
+                            "source": "conversation",
+                            "interaction_type": "fact",
+                            "extracted_from": user_input[:100]
+                        }
+                    )
+            
+            for preference in preferences:
+                # Check if this preference already exists
+                existing_memories = await self.memory_service.search_memories(
+                    user_id=DEFAULT_USER_ID,
+                    query=preference,
+                    memory_type="preference",
+                    limit=1
+                )
+                
+                if not existing_memories or not any(
+                    memory["content"] == preference for memory in existing_memories
+                ):
+                    await self.memory_service.store_memory(
+                        user_id=DEFAULT_USER_ID,
+                        content=preference,
+                        memory_type="preference",
+                        session_id=session_id,
+                        importance_score=0.7,  # Preferences are important
+                        tags=["preference", "user_preference"],
+                        metadata={
+                            "source": "conversation",
+                            "interaction_type": "preference",
+                            "extracted_from": user_input[:100]
+                        }
+                    )
+            
+            # For general conversation, only store if it's significant
+            if interaction.get("importance_score", 0) > 0.5:
+                # Extract key information from the conversation
+                key_info = []
+                
+                # Add user question/request
+                if "?" in user_input or any(word in user_input.lower() for word in ["how", "what", "why", "when", "where", "can you", "could you"]):
+                    key_info.append(f"User asked: {user_input}")
+                
+                # Add important agent responses (decisions, actions, confirmations)
+                if any(word in agent_response.lower() for word in ["i have", "i will", "i've", "done", "completed", "created", "updated", "here's"]):
+                    key_info.append(f"Assistant action: {agent_response}")
+                
+                if key_info:
+                    memory_content = "\n".join(key_info)
+                    
+                    # Check if similar content exists
+                    existing_memories = await self.memory_service.search_memories(
+                        user_id=DEFAULT_USER_ID,
+                        query=memory_content,
+                        memory_type="conversation",
+                        limit=1
+                    )
+                    
+                    # Only store if it's not too similar to existing memories
+                    if not existing_memories or all(
+                        memory["relevance_score"] < 0.8 for memory in existing_memories
+                    ):
+                        await self.memory_service.store_memory(
+                            user_id=DEFAULT_USER_ID,
+                            content=memory_content,
+                            memory_type="conversation",
+                            session_id=session_id,
+                            importance_score=interaction["importance_score"],
+                            tags=interaction.get("tools_used", []) + ["conversation"],
+                            metadata={
+                                "interaction_timestamp": interaction.get("timestamp"),
+                                "memory_type": "conversation",
+                                "interaction_type": "dialogue",
+                                "tools_used": interaction.get("tools_used", [])
+                            }
+                        )
     
     async def _update_user_preferences_from_session(
         self,
@@ -666,11 +773,23 @@ class EnhancedSessionService(DatabaseSessionService):
                     category="functionality"
                 )
     
-    async def get_session(self, session_id: str) -> Optional[Session]:
+    async def get_session(self, session_id: str, app_name: str = None, user_id: str = None) -> Optional[Session]:
         """Get a session by ID with proper error handling"""
         try:
+            # Use stored app_name and user_id from active sessions if available
+            if session_id in self.active_sessions:
+                app_name = app_name or APP_NAME
+                user_id = user_id or DEFAULT_USER_ID
+            elif not app_name or not user_id:
+                self.logger.warning(f"Session {session_id} not found in active sessions and missing required parameters")
+                return None
+
             # Call parent class method with correct signature
-            session = await super().get_session(session_id=session_id)
+            session = await super().get_session(
+                session_id=session_id,
+                app_name=app_name,
+                user_id=user_id
+            )
             
             # If session exists, enrich it with our tracked data
             if session and session_id in self.active_sessions:

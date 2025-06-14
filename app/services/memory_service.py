@@ -519,58 +519,98 @@ class JarvisMemoryService:
         topics = session_data.get("topics", [])
         tools_used = session_data.get("tools_used", [])
         
-        # Store main session memory with higher importance
-        await self.store_memory(
+        # Check if similar session summary exists
+        existing_summaries = await self.search_memories(
             user_id=user_id,
-            content=session_content,
+            query=session_content,
             memory_type="session_summary",
-            session_id=session_id,
-            importance_score=0.8,  # High importance for session summaries
-            tags=topics + tools_used + ["session_summary"],
-            metadata={
-                "session_length": session_data.get("session_length", 0),
-                "tools_used": tools_used,
-                "outcomes": session_data.get("outcomes", []),
-                "interaction_count": len(session_data.get("interactions", [])),
-                "memory_type": "session_summary"
-            }
+            limit=1
         )
+        
+        # Only store if it's not too similar to existing summaries
+        if not existing_summaries or all(
+            memory["relevance_score"] < 0.8 for memory in existing_summaries
+        ):
+            # Store main session memory with higher importance
+            await self.store_memory(
+                user_id=user_id,
+                content=session_content,
+                memory_type="session_summary",
+                session_id=session_id,
+                importance_score=0.8,  # High importance for session summaries
+                tags=topics + tools_used + ["session_summary"],
+                metadata={
+                    "session_length": session_data.get("session_length", 0),
+                    "tools_used": tools_used,
+                    "outcomes": session_data.get("outcomes", []),
+                    "interaction_count": len(session_data.get("interactions", [])),
+                    "memory_type": "session_summary"
+                }
+            )
         
         # Store significant individual interactions
         if "interactions" in session_data:
             for interaction in session_data["interactions"]:
-                # Lower threshold for storing interactions
-                if interaction.get("importance_score", 0) > 0.2:  # Even lower threshold
-                    interaction_content = (
-                        f"User: {interaction['user_input']}\n"
-                        f"Assistant: {interaction['agent_response']}\n"
-                        f"Tools Used: {', '.join(interaction.get('tools_used', []) or ['none'])}"
-                    )
+                # Only store high-importance interactions
+                if interaction.get("importance_score", 0) > 0.5:  # Increased threshold
+                    # Extract key information
+                    user_input = interaction['user_input']
+                    agent_response = interaction['agent_response']
                     
-                    # Extract potential preferences from interaction
-                    preferences = self._extract_preferences_from_text(
-                        interaction['user_input'] + " " + interaction['agent_response']
-                    )
-                    
-                    # Add preference tags if found
-                    tags = interaction.get("tools_used", []) + ["session_interaction"]
-                    if preferences:
-                        tags.extend([f"preference:{p}" for p in preferences])
-                    
-                    await self.store_memory(
-                        user_id=user_id,
-                        content=interaction_content,
-                        memory_type="conversation",
-                        session_id=session_id,
-                        importance_score=max(0.4, interaction.get("importance_score", 0.5)),  # Minimum 0.4
-                        tags=tags,
-                        metadata={
-                            "interaction_timestamp": interaction.get("timestamp"),
-                            "memory_type": "conversation",
-                            "interaction_type": "dialogue",
-                            "preferences_found": preferences
-                        }
-                    )
+                    # Only store if it contains valuable information
+                    if any(indicator in user_input.lower() for indicator in [
+                        "i am", "i'm", "my name is", "i work", "i live",  # Facts
+                        "i prefer", "i like", "i want", "i need",  # Preferences
+                        "how", "what", "why", "when", "where", "can you"  # Questions
+                    ]):
+                        # Extract the relevant part
+                        sentences = user_input.split('.')
+                        relevant_sentences = []
+                        for sentence in sentences:
+                            if any(indicator in sentence.lower() for indicator in [
+                                "i am", "i'm", "my name is", "i work", "i live",
+                                "i prefer", "i like", "i want", "i need",
+                                "how", "what", "why", "when", "where", "can you"
+                            ]):
+                                relevant_sentences.append(sentence.strip())
+                        
+                        if relevant_sentences:
+                            interaction_content = "\n".join(relevant_sentences)
+                            
+                            # Check if similar content exists
+                            existing_memories = await self.search_memories(
+                                user_id=user_id,
+                                query=interaction_content,
+                                limit=1
+                            )
+                            
+                            # Only store if not duplicate
+                            if not existing_memories or all(
+                                memory["relevance_score"] < 0.8 for memory in existing_memories
+                            ):
+                                # Extract potential preferences
+                                preferences = self._extract_preferences_from_text(interaction_content)
+                                
+                                # Add preference tags if found
+                                tags = interaction.get("tools_used", []) + ["interaction"]
+                                if preferences:
+                                    tags.extend([f"preference:{p}" for p in preferences])
+                                
+                                await self.store_memory(
+                                    user_id=user_id,
+                                    content=interaction_content,
+                                    memory_type="conversation",
+                                    session_id=session_id,
+                                    importance_score=max(0.6, interaction.get("importance_score", 0.5)),
+                                    tags=tags,
+                                    metadata={
+                                        "interaction_timestamp": interaction.get("timestamp"),
+                                        "memory_type": "conversation",
+                                        "interaction_type": "dialogue",
+                                        "preferences_found": preferences,
+                                        "tools_used": interaction.get("tools_used", [])
+                                    }
+                                )
     
     async def _update_memory_access(self, memory_ids: List[str]):
         """Update access count and last accessed time for memories"""
