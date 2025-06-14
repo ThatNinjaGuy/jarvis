@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from app.models.database import SessionHistory, UserProfile
 from app.services.user_profile_service import UserProfileService
 from app.services.memory_service import JarvisMemoryService
+from app.config.constants import DEFAULT_USER_ID  # Import from constants instead
 
 class EnhancedSessionService(DatabaseSessionService):
     def __init__(
@@ -71,7 +72,7 @@ class EnhancedSessionService(DatabaseSessionService):
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                session = await self.create_session(
+                session = await super().create_session(
                     app_name=app_name,
                     user_id=user_id,
                     session_id=session_id if attempt == 0 else str(uuid.uuid4())
@@ -82,24 +83,48 @@ class EnhancedSessionService(DatabaseSessionService):
                     raise
                 continue
         
-        # Create session history record with JSON-safe data
+        # Create or update session history record with JSON-safe data
         try:
             current_time = datetime.utcnow()
-            session_history = SessionHistory(
-                session_id=session.id,
-                user_id=user_id,
-                created_at=current_time,
-                session_metadata={
+            
+            # Check for existing session history
+            existing_session = self.db_session.query(SessionHistory).filter(
+                SessionHistory.session_id == session.id
+            ).first()
+            
+            if existing_session:
+                # Update existing session
+                existing_session.is_active = True
+                existing_session.session_metadata.update({
                     "app_name": app_name,
                     "context_memories_count": len(contextual_memories.get("relevant_memories", [])),
                     "user_preferences_count": len(user_preferences),
                     "initial_context": initial_context or {},
                     "start_time": current_time.isoformat()
-                }
-            )
+                })
+            else:
+                # Create new session history
+                session_history = SessionHistory(
+                    session_id=session.id,
+                    user_id=user_id,
+                    created_at=current_time,
+                    session_metadata={
+                        "app_name": app_name,
+                        "context_memories_count": len(contextual_memories.get("relevant_memories", [])),
+                        "user_preferences_count": len(user_preferences),
+                        "initial_context": initial_context or {},
+                        "start_time": current_time.isoformat()
+                    },
+                    is_active=True
+                )
+                self.db_session.add(session_history)
             
-            self.db_session.add(session_history)
-            self.db_session.commit()
+            try:
+                self.db_session.commit()
+            except Exception as e:
+                self.db_session.rollback()
+                self.logger.warning(f"Failed to update session history, continuing anyway: {str(e)}")
+            
         except Exception as e:
             self.logger.error(f"Failed to create session history: {str(e)}")
             # Continue anyway as this is not critical
@@ -134,42 +159,57 @@ class EnhancedSessionService(DatabaseSessionService):
         session_data = self.active_sessions[session_id]
         user_id = session_data["user_id"]
         
-        # Record interaction
-        if user_input and agent_response:
+        # Record interaction if we have both input and response
+        if user_input or agent_response:  # Changed to allow partial updates
+            current_time = datetime.utcnow().isoformat()
+            
+            # Get existing interaction or create new one
+            last_interaction = (session_data["interactions"][-1] 
+                              if session_data["interactions"] else {})
+            
             interaction = {
-                "user_input": user_input,
-                "agent_response": agent_response,
-                "timestamp": datetime.utcnow().isoformat(),
-                "tools_used": tools_used or [],
+                "user_input": user_input or last_interaction.get("user_input", ""),
+                "agent_response": agent_response or last_interaction.get("agent_response", ""),
+                "timestamp": current_time,
+                "tools_used": tools_used or last_interaction.get("tools_used", []),
                 "importance_score": self._calculate_interaction_importance(
-                    user_input, agent_response, tools_used
+                    user_input or last_interaction.get("user_input", ""),
+                    agent_response or last_interaction.get("agent_response", ""),
+                    tools_used
                 )
             }
             
-            session_data["interactions"].append(interaction)
+            # Only append if this is a new interaction
+            if user_input or (agent_response and not last_interaction.get("agent_response")):
+                session_data["interactions"].append(interaction)
+            else:
+                # Update the last interaction
+                session_data["interactions"][-1].update(interaction)
             
             # Update tools used
             if tools_used:
                 session_data["tools_used"].update(tools_used)
             
             # Extract topics from interaction
-            topics = await self._extract_topics_from_interaction(user_input, agent_response)
-            session_data["topics_discussed"].extend(topics)
+            if user_input and agent_response:  # Only extract topics for complete interactions
+                topics = await self._extract_topics_from_interaction(user_input, agent_response)
+                session_data["topics_discussed"].extend(topics)
             
             # Record interaction in user profile service
             await self.user_profile_service.record_interaction(
                 user_id=user_id,
                 session_id=session_id,
-                user_input=user_input,
-                agent_response=agent_response,
+                user_input=user_input or last_interaction.get("user_input", ""),
+                agent_response=agent_response or last_interaction.get("agent_response", ""),
                 tools_used=tools_used,
                 context_data=new_context
             )
             
-            # Learn preferences from interaction
-            await self._learn_preferences_from_interaction(
-                user_id, user_input, agent_response, tools_used
-            )
+            # Learn preferences from complete interactions
+            if user_input and agent_response:
+                await self._learn_preferences_from_interaction(
+                    user_id, user_input, agent_response, tools_used
+                )
         
         # Update session context
         session_data["session_context"].update(new_context)
@@ -189,52 +229,81 @@ class EnhancedSessionService(DatabaseSessionService):
                 "session_duration": (datetime.utcnow() - datetime.fromisoformat(session_data["start_time"])).seconds
             }
             
-            # Update memory context if significant interaction
-            if user_input and len(user_input) > 50:  # Significant interaction threshold
-                await self._update_contextual_memory(session_id, user_id, interaction)
+            # Update memory context for any significant interaction
+            if user_input or agent_response:
+                await self._update_contextual_memory(
+                    session_id=session_id,
+                    user_id=user_id,
+                    interaction=interaction
+                )
     
     async def end_session_with_memory_capture(self, session_id: str) -> Optional[Dict[str, Any]]:
         """End session and capture memories and insights"""
         
-        session = await self.get_session(session_id)
-        if not session:
+        if session_id not in self.active_sessions:
+            self.logger.warning(f"Session {session_id} not found in active sessions")
             return None
         
-        if session_id in self.active_sessions:
-            session_data = self.active_sessions[session_id]
-            user_id = session_data["user_id"]
-            
+        session_data = self.active_sessions[session_id]
+        user_id = session_data["user_id"]
+        
+        try:
             # Extract session insights
             session_insights = await self._extract_session_insights(session_data)
             
             # Update session history
-            session_history = await self._update_session_history(session_id, session_insights)
+            session_history = self.db_session.query(SessionHistory).filter(
+                SessionHistory.session_id == session_id
+            ).first()
             
             if session_history:
-                # Store session memories
-                await self.memory_service.store_session_memory(
-                    session_id=session_id,
-                    user_id=user_id,
-                    session_data={
-                        "summary": session_insights["summary"],
-                        "topics": session_insights["topics"],
-                        "tools_used": list(session_data["tools_used"]),
-                        "interactions": session_data["interactions"],
-                        "outcomes": session_insights["outcomes"],
-                        "session_length": session_insights["session_duration"]
-                    }
-                )
+                session_history.ended_at = datetime.utcnow()
+                session_history.session_summary = session_insights["summary"]
+                session_history.topics_discussed = session_insights["topics"]
+                session_history.outcomes = session_insights["outcomes"]
+                session_history.is_active = False
                 
-                # Update user preferences based on session
-                await self._update_user_preferences_from_session(user_id, session_data, session_insights)
+                # Update metadata
+                metadata = session_history.session_metadata or {}
+                metadata.update({
+                    "total_interactions": session_insights["total_interactions"],
+                    "session_duration": session_insights["session_duration"],
+                    "tools_effectiveness": session_insights["tools_effectiveness"]
+                })
+                session_history.session_metadata = metadata
                 
-                # Clean up active session
-                del self.active_sessions[session_id]
-                
-                self.logger.info(f"Ended session {session_id} with memory capture for user {user_id}")
-                return session_history.to_dict()
-        
-        return None
+                try:
+                    self.db_session.commit()
+                except Exception as e:
+                    self.db_session.rollback()
+                    self.logger.warning(f"Failed to update session history on end: {str(e)}")
+            
+            # Store session memories even if history update fails
+            await self.memory_service.store_session_memory(
+                session_id=session_id,
+                user_id=user_id,
+                session_data={
+                    "summary": session_insights["summary"],
+                    "topics": session_insights["topics"],
+                    "tools_used": list(session_data["tools_used"]),
+                    "interactions": session_data["interactions"],
+                    "outcomes": session_insights["outcomes"],
+                    "session_length": session_insights["session_duration"]
+                }
+            )
+            
+            # Update user preferences based on session
+            await self._update_user_preferences_from_session(user_id, session_data, session_insights)
+            
+            # Clean up active session
+            del self.active_sessions[session_id]
+            
+            self.logger.info(f"Ended session {session_id} with memory capture for user {user_id}")
+            return session_history.to_dict() if session_history else None
+            
+        except Exception as e:
+            self.logger.error(f"Error ending session {session_id}: {str(e)}")
+            return None
     
     async def _extract_session_insights(self, session_data: Dict[str, Any]) -> Dict[str, Any]:
         """Extract key insights from session data"""
@@ -316,36 +385,120 @@ class EnhancedSessionService(DatabaseSessionService):
     ):
         """Learn user preferences from interactions"""
         
-        # Detect explicit preferences
-        preference_phrases = ["I prefer", "I like", "I want", "I need", "I always", "I usually"]
+        # Detect explicit preferences with more patterns
+        preference_patterns = [
+            ("I prefer", 0.9),
+            ("I like", 0.8),
+            ("I want", 0.8),
+            ("I need", 0.8),
+            ("I always", 0.85),
+            ("I usually", 0.75),
+            ("I don't like", 0.85),
+            ("I hate", 0.9),
+            ("please", 0.6),
+            ("could you", 0.6)
+        ]
         
-        for phrase in preference_phrases:
+        # Extract preferences from user input
+        for phrase, confidence in preference_patterns:
             if phrase.lower() in user_input.lower():
-                # Extract preference context
                 sentences = user_input.split('.')
                 for sentence in sentences:
                     if phrase.lower() in sentence.lower():
+                        # Determine preference category
+                        category = self._determine_preference_category(sentence, tools_used)
+                        
+                        # Store the preference
                         await self.user_profile_service.update_preference(
                             user_id=user_id,
-                            key="communication_preference",
+                            key=f"preference_{category}",
                             value=sentence.strip(),
                             preference_type="explicit",
-                            confidence=0.8,
-                            category="communication"
+                            confidence=confidence,
+                            category=category
                         )
-                        break
         
-        # Learn tool preferences
+        # Learn communication style preferences
+        await self._learn_communication_style(user_id, user_input, agent_response)
+        
+        # Learn tool preferences with more context
         if tools_used:
             for tool in tools_used:
                 await self.user_profile_service.update_preference(
                     user_id=user_id,
                     key=f"tool_usage_{tool}",
-                    value={"frequency": 1, "context": user_input[:100]},
+                    value={
+                        "frequency": 1,
+                        "context": user_input[:200],
+                        "last_used": datetime.utcnow().isoformat(),
+                        "success_indicator": "positive" if "thank" in user_input.lower() else "neutral"
+                    },
                     preference_type="implicit",
-                    confidence=0.6,
+                    confidence=0.7,
                     category="functionality"
                 )
+    
+    def _determine_preference_category(self, text: str, tools_used: Optional[List[str]] = None) -> str:
+        """Determine the category of a preference based on its content"""
+        text = text.lower()
+        
+        # Communication preferences
+        if any(word in text for word in ["say", "tell", "explain", "show", "respond"]):
+            return "communication"
+        
+        # Tool preferences
+        if tools_used and any(tool.lower() in text for tool in tools_used):
+            return "functionality"
+        
+        # Interface preferences
+        if any(word in text for word in ["display", "format", "layout", "style"]):
+            return "interface"
+        
+        # Task preferences
+        if any(word in text for word in ["when", "how", "what", "workflow", "process"]):
+            return "task"
+        
+        return "general"
+    
+    async def _learn_communication_style(self, user_id: str, user_input: str, agent_response: str):
+        """Learn communication style preferences from interaction"""
+        
+        # Analyze formality
+        formal_indicators = ["please", "would you", "could you", "kindly"]
+        informal_indicators = ["hey", "hi", "thanks", "cool"]
+        
+        formality_score = sum(1 for word in formal_indicators if word in user_input.lower())
+        informality_score = sum(1 for word in informal_indicators if word in user_input.lower())
+        
+        if formality_score > informality_score:
+            style = "formal"
+        elif informality_score > formality_score:
+            style = "informal"
+        else:
+            style = "balanced"
+        
+        # Analyze verbosity preference
+        words = user_input.split()
+        if len(words) > 30:
+            verbosity = "detailed"
+        elif len(words) < 10:
+            verbosity = "concise"
+        else:
+            verbosity = "balanced"
+        
+        # Update communication style preferences
+        await self.user_profile_service.update_preference(
+            user_id=user_id,
+            key="communication_style",
+            value={
+                "formality": style,
+                "verbosity": verbosity,
+                "last_updated": datetime.utcnow().isoformat()
+            },
+            preference_type="implicit",
+            confidence=0.65,
+            category="communication"
+        )
     
     async def _extract_topics_from_interaction(
         self, 
@@ -382,31 +535,42 @@ class EnhancedSessionService(DatabaseSessionService):
         agent_response: str,
         tools_used: Optional[List[str]] = None
     ) -> float:
-        """Calculate importance score for interaction"""
+        """Calculate importance score for an interaction"""
+        importance = 0.3  # Base importance
         
-        score = 0.5  # Base score
+        # Check for preference indicators
+        preference_indicators = [
+            "I prefer", "I like", "I want", "I need",
+            "I always", "I usually", "I don't like", "I hate",
+            "my name is", "call me"
+        ]
         
-        # Length factor
-        if len(user_input) > 100:
-            score += 0.1
+        # Increase importance for preference-related interactions
+        for indicator in preference_indicators:
+            if indicator.lower() in user_input.lower():
+                importance += 0.3
+                break
         
-        # Tool usage factor
-        if tools_used and len(tools_used) > 0:
-            score += 0.2
+        # Increase importance based on tools used
+        if tools_used:
+            importance += 0.2
         
-        # Complexity factor (questions, detailed responses)
-        if "?" in user_input:
-            score += 0.1
-            
-        if len(agent_response) > 200:
-            score += 0.1
+        # Increase importance for longer, more detailed interactions
+        if len(user_input) > 50 or len(agent_response) > 100:
+            importance += 0.1
         
-        # Preference indication factor
-        preference_indicators = ["prefer", "like", "want", "need", "always", "never"]
-        if any(indicator in user_input.lower() for indicator in preference_indicators):
-            score += 0.2
+        # Increase importance for interactions with specific topics
+        important_topics = [
+            "schedule", "reminder", "preference", "profile",
+            "remember", "forget", "always", "never"
+        ]
         
-        return min(1.0, score)  # Cap at 1.0
+        for topic in important_topics:
+            if topic in user_input.lower() or topic in agent_response.lower():
+                importance += 0.1
+                break
+        
+        return min(1.0, importance)  # Cap at 1.0
     
     def _calculate_tools_effectiveness(
         self,
@@ -436,19 +600,31 @@ class EnhancedSessionService(DatabaseSessionService):
     async def _update_contextual_memory(
         self,
         session_id: str,
-        user_id: str,
+        user_id: str,  # This will be ignored
         interaction: Dict[str, Any]
     ):
         """Update contextual memory with significant interactions"""
         
-        if interaction.get("importance_score", 0) > 0.6:
+        # Lower threshold to capture more interactions
+        if interaction.get("importance_score", 0) > 0.3:  # Lowered from 0.6
+            # Create a more detailed memory content
+            memory_content = (
+                f"User: {interaction['user_input']}\n"
+                f"Assistant: {interaction['agent_response']}\n"
+                f"Tools Used: {', '.join(interaction.get('tools_used', []) or ['none'])}"
+            )
+            
             await self.memory_service.store_memory(
-                user_id=user_id,
-                content=f"User: {interaction['user_input']}\nAssistant: {interaction['agent_response']}",
+                user_id=DEFAULT_USER_ID,  # Always use default user
+                content=memory_content,
                 memory_type="conversation",
                 session_id=session_id,
                 importance_score=interaction["importance_score"],
-                tags=interaction.get("tools_used", [])
+                tags=interaction.get("tools_used", []),
+                metadata={
+                    "timestamp": interaction.get("timestamp", datetime.utcnow().isoformat()),
+                    "interaction_type": "dialogue"
+                }
             )
     
     async def _update_user_preferences_from_session(
@@ -487,4 +663,16 @@ class EnhancedSessionService(DatabaseSessionService):
                     preference_type="implicit",
                     confidence=0.7,
                     category="functionality"
-                ) 
+                )
+    
+    async def get_session(self, session_id: str) -> Optional[Session]:
+        """Get a session by ID with proper error handling"""
+        try:
+            return await super().get_session(session_id)
+        except TypeError:
+            # Handle the case where parent method doesn't accept session_id
+            self.logger.warning(f"Failed to get session {session_id} due to method signature mismatch")
+            return None
+        except Exception as e:
+            self.logger.error(f"Error getting session {session_id}: {str(e)}")
+            return None 

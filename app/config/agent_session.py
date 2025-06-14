@@ -8,6 +8,7 @@ from google.genai import types
 from app.jarvis.agent import root_agent
 from app.jarvis.utils import load_environment
 from app.config.logging_config import setup_cloud_logging
+from app.config.constants import APP_NAME, DEFAULT_USER_ID
 
 # Enhanced imports for memory system
 from app.config.database import db_config
@@ -27,8 +28,6 @@ load_environment()
 if not os.environ.get("K_SERVICE"):  # K_SERVICE is set in Cloud Run
     from dotenv import load_dotenv
     load_dotenv()
-
-APP_NAME = "Jarvis"
 
 # Initialize both session services for backward compatibility
 session_service = InMemorySessionService()
@@ -111,14 +110,14 @@ async def _start_enhanced_session(session_id, is_audio=False):
     """Start session with enhanced memory capabilities"""
     
     try:
-        # Get user context and memories
-        user_profile = await user_profile_service.get_user_profile(session_id)
-        user_preferences = await user_profile_service.get_user_preferences(session_id)
+        # Use default user ID instead of session_id for user operations
+        user_profile = await user_profile_service.get_user_profile(DEFAULT_USER_ID)
+        user_preferences = await user_profile_service.get_user_preferences(DEFAULT_USER_ID)
         
         # Get contextual memories (with better default context)
         try:
             contextual_memories = await memory_service.get_contextual_memories(
-                user_id=session_id,
+                user_id=DEFAULT_USER_ID,  # Use default user ID
                 current_context={"query": "session initialization", "session_start": True},
                 max_memories=5
             )
@@ -128,7 +127,7 @@ async def _start_enhanced_session(session_id, is_audio=False):
         
         # Create enhanced session with context
         session = await enhanced_session_service.create_session_with_context(
-            user_id=session_id,
+            user_id=DEFAULT_USER_ID,  # Use default user ID
             app_name=APP_NAME,
             session_id=session_id,
             initial_context={
@@ -289,7 +288,13 @@ async def update_session_memory(session_id, user_input, agent_response, tools_us
         try:
             await enhanced_session_service.update_session_context(
                 session_id=session_id,
-                new_context={"last_interaction": {"input": user_input, "response": agent_response}},
+                new_context={
+                    "last_interaction": {
+                        "input": user_input,
+                        "response": agent_response,
+                        "user_id": DEFAULT_USER_ID  # Add default user ID to context
+                    }
+                },
                 user_input=user_input,
                 agent_response=agent_response,
                 tools_used=tools_used

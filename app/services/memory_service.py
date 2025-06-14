@@ -1,10 +1,11 @@
 import logging
 import uuid
-from typing import List, Dict, Any, Optional
-from datetime import datetime
+from typing import List, Dict, Any, Optional, Union
+from datetime import datetime, timedelta
 import asyncio
 import json
 import os
+import re
 
 import chromadb
 from chromadb.config import Settings
@@ -21,10 +22,14 @@ class JarvisMemoryService:
         self.logger = logging.getLogger(__name__)
         self.collection_name = collection_name
         
-        # Initialize ChromaDB
+        # Initialize ChromaDB with proper settings
+        persist_directory = os.path.abspath("./jarvis_memory_db")
+        os.makedirs(persist_directory, exist_ok=True)
+        
         self.chroma_client = chromadb.Client(Settings(
-            persist_directory="./jarvis_memory_db",
-            anonymized_telemetry=False
+            persist_directory=persist_directory,
+            anonymized_telemetry=False,
+            is_persistent=True
         ))
         
         # Initialize Vertex AI
@@ -33,14 +38,20 @@ class JarvisMemoryService:
         
         # Get or create collection
         try:
+            # Try to get existing collection
             self.collection = self.chroma_client.get_collection(name=collection_name)
             self.logger.info(f"Loaded existing memory collection: {collection_name}")
-        except:
-            self.collection = self.chroma_client.create_collection(
-                name=collection_name,
-                metadata={"description": "Jarvis long-term memory storage"}
-            )
-            self.logger.info(f"Created new memory collection: {collection_name}")
+        except Exception as e:
+            # Collection doesn't exist, create it
+            try:
+                self.collection = self.chroma_client.create_collection(
+                    name=collection_name,
+                    metadata={"description": "Jarvis long-term memory storage"}
+                )
+                self.logger.info(f"Created new memory collection: {collection_name}")
+            except Exception as e:
+                self.logger.error(f"Error creating ChromaDB collection: {str(e)}")
+                raise
     
     async def _get_embedding(self, text: str) -> List[float]:
         """Get embedding using Vertex AI Text Embeddings"""
@@ -74,10 +85,10 @@ class JarvisMemoryService:
         memory_type: str = "conversation",
         session_id: Optional[str] = None,
         importance_score: float = 0.5,
-        tags: List[str] = None,
+        tags: Union[List[str], str] = None,
         metadata: Dict[str, Any] = None
     ) -> str:
-        """Store a memory in the vector database"""
+        """Store a memory in the vector database with enhanced metadata"""
         
         # Generate unique ID for this memory
         memory_id = str(uuid.uuid4())
@@ -85,16 +96,41 @@ class JarvisMemoryService:
         # Create embedding using Vertex AI
         embedding = await self._get_embedding(content)
         
-        # Prepare metadata
+        # Generate a summary for long content
+        content_summary = await self._generate_content_summary(content) if len(content) > 200 else content
+        
+        # Calculate memory importance if not provided
+        if importance_score == 0.5:  # Default value
+            importance_score = self._calculate_memory_importance(content, memory_type, metadata)
+        
+        # Handle tags properly
+        if isinstance(tags, str):
+            tags = [tag.strip() for tag in tags.split(",")]
+        elif tags is None:
+            tags = []
+        
+        # Convert tags to string for ChromaDB metadata
+        tags_str = ",".join(tags) if tags else ""
+        
+        # Prepare enhanced metadata
         memory_metadata = {
             "user_id": user_id,
             "memory_type": memory_type,
             "session_id": session_id or "",
-            "importance_score": importance_score,
+            "importance_score": float(importance_score),
             "timestamp": datetime.utcnow().isoformat(),
-            "tags": tags or [],
-            **(metadata or {})
+            "tags": tags_str,
+            "content_length": len(content),
+            "has_summary": bool(content_summary != content),
+            "memory_category": self._determine_memory_category(content, memory_type)
         }
+        
+        # Add additional metadata if provided
+        if metadata:
+            # Ensure all metadata values are primitive types
+            for key, value in metadata.items():
+                if isinstance(value, (str, int, float, bool)):
+                    memory_metadata[key] = value
         
         # Store in ChromaDB
         try:
@@ -110,13 +146,21 @@ class JarvisMemoryService:
                 user_id=user_id,
                 session_id=session_id,
                 content=content,
-                content_summary=content[:200] + "..." if len(content) > 200 else content,
+                content_summary=content_summary,
                 vector_id=memory_id,
                 memory_type=memory_type,
                 importance_score=importance_score,
-                tags=tags or []
+                tags=tags,  # Store as list in SQL
+                metadata=memory_metadata
             )
             self.db.add(memory_vector)
+            
+            # Update related memories
+            await self._update_related_memories(memory_vector)
+            
+            # Cleanup old memories if needed
+            await self._cleanup_old_memories(user_id)
+            
             self.db.commit()
             
             self.logger.info(f"Stored memory {memory_id} for user {user_id}")
@@ -126,6 +170,152 @@ class JarvisMemoryService:
             self.logger.error(f"Error storing memory: {str(e)}")
             self.db.rollback()
             raise
+    
+    def _calculate_memory_importance(
+        self,
+        content: str,
+        memory_type: str,
+        metadata: Optional[Dict[str, Any]]
+    ) -> float:
+        """Calculate memory importance based on content and context"""
+        importance = 0.5  # Base importance
+        
+        # Content-based factors
+        if len(content) > 500:  # Long, detailed content
+            importance += 0.1
+        if "?" in content:  # Questions are important
+            importance += 0.1
+        
+        # Type-based factors
+        type_weights = {
+            "session_summary": 0.2,
+            "preference": 0.15,
+            "fact": 0.1,
+            "conversation": 0.0
+        }
+        importance += type_weights.get(memory_type, 0.0)
+        
+        # Metadata-based factors
+        if metadata:
+            if metadata.get("explicit_preference"):
+                importance += 0.2
+            if metadata.get("tools_used"):
+                importance += 0.1
+        
+        return min(1.0, importance)
+    
+    async def _generate_content_summary(self, content: str) -> str:
+        """Generate a concise summary for long content"""
+        if len(content) <= 200:
+            return content
+            
+        # Simple extractive summarization
+        sentences = content.split('.')
+        if len(sentences) <= 2:
+            return content
+            
+        # Take first and last meaningful sentences
+        summary = f"{sentences[0].strip()}... {sentences[-2].strip()}"
+        return summary[:200] + "..." if len(summary) > 200 else summary
+    
+    async def _enhance_memory_tags(self, content: str, existing_tags: List[str]) -> List[str]:
+        """Enhance memory tags with extracted topics"""
+        tags = set(existing_tags)
+        
+        # Add content-based tags
+        if "?" in content:
+            tags.add("question")
+        if any(word in content.lower() for word in ["how", "what", "why", "when", "where"]):
+            tags.add("inquiry")
+        if any(word in content.lower() for word in ["error", "problem", "issue", "bug"]):
+            tags.add("troubleshooting")
+        if any(word in content.lower() for word in ["thanks", "thank you", "appreciate"]):
+            tags.add("gratitude")
+        
+        return list(tags)
+    
+    def _determine_memory_category(self, content: str, memory_type: str) -> str:
+        """Determine the category of a memory based on its content and type"""
+        content = content.lower()
+        
+        if memory_type == "session_summary":
+            return "session"
+        
+        if any(word in content for word in ["error", "exception", "failed", "bug"]):
+            return "troubleshooting"
+        
+        if any(word in content for word in ["how to", "example", "tutorial"]):
+            return "learning"
+        
+        if "preference" in memory_type or any(word in content for word in ["i prefer", "i like", "i want"]):
+            return "preference"
+        
+        return "general"
+    
+    async def _update_related_memories(self, memory: MemoryVector):
+        """Update relationships between related memories"""
+        try:
+            # Search for related memories
+            embedding = await self._get_embedding(memory.content)
+            results = self.collection.query(
+                query_embeddings=[embedding],
+                n_results=5,
+                where={"user_id": memory.user_id}
+            )
+            
+            if not results or not results.get("ids"):
+                return
+            
+            # Get related memory IDs
+            related_ids = results["ids"][0]
+            
+            # Update access count for related memories
+            for vector_id in related_ids:
+                if vector_id != memory.vector_id:  # Don't update the current memory
+                    related_memory = self.db.query(MemoryVector).filter(
+                        MemoryVector.vector_id == vector_id
+                    ).first()
+                    
+                    if related_memory:
+                        related_memory.access_count += 1
+                        related_memory.last_accessed = datetime.utcnow()
+            
+            self.db.commit()
+            
+        except Exception as e:
+            self.logger.warning(f"Error updating related memories: {str(e)}")
+            self.db.rollback()
+    
+    async def _cleanup_old_memories(self, user_id: str):
+        """Clean up old, low-importance memories"""
+        try:
+            # Get retention days from user preferences (default 90 days)
+            retention_days = 90  # TODO: Get from user preferences
+            
+            # Calculate cutoff date
+            cutoff_date = datetime.utcnow() - timedelta(days=retention_days)
+            
+            # Find old memories with low importance
+            old_memories = self.db.query(MemoryVector).filter(
+                MemoryVector.user_id == user_id,
+                MemoryVector.created_at < cutoff_date,
+                MemoryVector.importance_score < 0.3,
+                MemoryVector.access_count < 2
+            ).all()
+            
+            # Delete from both databases
+            for memory in old_memories:
+                try:
+                    self.collection.delete(ids=[memory.vector_id])
+                    self.db.delete(memory)
+                except Exception as e:
+                    self.logger.warning(f"Error deleting memory {memory.vector_id}: {str(e)}")
+            
+            self.db.commit()
+            
+        except Exception as e:
+            self.logger.warning(f"Error during memory cleanup: {str(e)}")
+            self.db.rollback()
     
     async def search_memories(
         self,
@@ -254,33 +444,57 @@ class JarvisMemoryService:
         topics = session_data.get("topics", [])
         tools_used = session_data.get("tools_used", [])
         
-        # Store main session memory
+        # Store main session memory with higher importance
         await self.store_memory(
             user_id=user_id,
             content=session_content,
-            memory_type="conversation",
+            memory_type="session_summary",
             session_id=session_id,
-            importance_score=0.7,
-            tags=topics + tools_used,
+            importance_score=0.8,  # High importance for session summaries
+            tags=topics + tools_used + ["session_summary"],
             metadata={
                 "session_length": session_data.get("session_length", 0),
                 "tools_used": tools_used,
-                "outcomes": session_data.get("outcomes", [])
+                "outcomes": session_data.get("outcomes", []),
+                "interaction_count": len(session_data.get("interactions", [])),
+                "memory_type": "session_summary"
             }
         )
         
         # Store significant individual interactions
         if "interactions" in session_data:
             for interaction in session_data["interactions"]:
-                if interaction.get("importance_score", 0) > 0.6:
+                # Lower threshold for storing interactions
+                if interaction.get("importance_score", 0) > 0.2:  # Even lower threshold
+                    interaction_content = (
+                        f"User: {interaction['user_input']}\n"
+                        f"Assistant: {interaction['agent_response']}\n"
+                        f"Tools Used: {', '.join(interaction.get('tools_used', []) or ['none'])}"
+                    )
+                    
+                    # Extract potential preferences from interaction
+                    preferences = self._extract_preferences_from_text(
+                        interaction['user_input'] + " " + interaction['agent_response']
+                    )
+                    
+                    # Add preference tags if found
+                    tags = interaction.get("tools_used", []) + ["session_interaction"]
+                    if preferences:
+                        tags.extend([f"preference:{p}" for p in preferences])
+                    
                     await self.store_memory(
                         user_id=user_id,
-                        content=f"User: {interaction['user_input']}\nAssistant: {interaction['agent_response']}",
+                        content=interaction_content,
                         memory_type="conversation",
                         session_id=session_id,
-                        importance_score=interaction.get("importance_score", 0.5),
-                        tags=interaction.get("tools_used", []),
-                        metadata={"interaction_timestamp": interaction.get("timestamp")}
+                        importance_score=max(0.4, interaction.get("importance_score", 0.5)),  # Minimum 0.4
+                        tags=tags,
+                        metadata={
+                            "interaction_timestamp": interaction.get("timestamp"),
+                            "memory_type": "conversation",
+                            "interaction_type": "dialogue",
+                            "preferences_found": preferences
+                        }
                     )
     
     async def _update_memory_access(self, memory_ids: List[str]):
@@ -379,34 +593,36 @@ class JarvisMemoryService:
         
         return preferences[:5]  # Return top 5 potential preferences
     
-    async def cleanup_old_memories(self, user_id: str, days_threshold: int = 90):
-        """Clean up old, low-importance memories"""
-        from datetime import datetime, timedelta
+    def _extract_preferences_from_text(self, text: str) -> List[str]:
+        """Extract potential user preferences from text"""
+        preferences = []
         
-        cutoff_date = datetime.utcnow() - timedelta(days=days_threshold)
+        # Common preference indicators
+        preference_patterns = [
+            (r"(?i)I prefer", 0.9),
+            (r"(?i)I like", 0.8),
+            (r"(?i)I want", 0.7),
+            (r"(?i)I need", 0.7),
+            (r"(?i)I always", 0.85),
+            (r"(?i)I usually", 0.75),
+            (r"(?i)I don't like", 0.85),
+            (r"(?i)I hate", 0.9),
+            (r"(?i)please", 0.6),
+            (r"(?i)could you", 0.6),
+            (r"(?i)my name is", 0.95),
+            (r"(?i)call me", 0.9),
+            (r"(?i)schedule for", 0.8),
+            (r"(?i)remind me", 0.8)
+        ]
         
-        # Find old, low-importance memories
-        old_memories = self.db.query(MemoryVector).filter(
-            MemoryVector.user_id == user_id,
-            MemoryVector.created_at < cutoff_date,
-            MemoryVector.importance_score < 0.3,
-            MemoryVector.access_count < 2
-        ).all()
+        # Check each pattern
+        for pattern, confidence in preference_patterns:
+            if re.search(pattern, text):
+                # Get the context after the pattern
+                match = re.search(pattern + r"\s+(.+?)(?:\.|\n|$)", text)
+                if match:
+                    preference = match.group(1).strip()
+                    if len(preference) > 3:  # Minimum length to be meaningful
+                        preferences.append(preference)
         
-        vector_ids_to_delete = [memory.vector_id for memory in old_memories]
-        
-        if vector_ids_to_delete:
-            try:
-                # Delete from ChromaDB
-                self.collection.delete(ids=vector_ids_to_delete)
-                
-                # Delete from SQL database
-                for memory in old_memories:
-                    self.db.delete(memory)
-                
-                self.db.commit()
-                self.logger.info(f"Cleaned up {len(vector_ids_to_delete)} old memories for user {user_id}")
-                
-            except Exception as e:
-                self.logger.error(f"Error cleaning up memories: {str(e)}")
-                self.db.rollback() 
+        return preferences 
