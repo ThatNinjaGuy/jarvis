@@ -34,6 +34,7 @@ PATH_TO_MAPS_SERVER = str((Path(__file__).parent / "mcp_servers" / "maps" / "ser
 PATH_TO_YOUTUBE_SERVER = str((Path(__file__).parent / "mcp_servers" / "youtube" / "server.py").resolve())
 PATH_TO_TWITTER_SERVER = str(ROOT_DIR / "node_modules" / "@enescinar" / "twitter-mcp")
 PATH_TO_MEMORY_PROFILE_SERVER = str((Path(__file__).parent / "mcp_servers" / "memory_profile" / "server.py").resolve())
+PATH_TO_LINKEDIN_SERVER = str((Path(__file__).parent / "mcp_servers" / "linkedin" / "server.py").resolve())
 
 # Check if memory system is available
 try:
@@ -89,6 +90,13 @@ base_tools = [
                 **{key: str(value) for key, value in os.environ.items()},
                 **twitter_env  # Use the validated credentials
             },
+            cwd=str(ROOT_DIR),
+        )
+    ),
+    MCPToolset(
+        connection_params=StdioServerParameters(
+            command="python3",
+            args=["-m", "app.jarvis.mcp_servers.linkedin.server"],
             cwd=str(ROOT_DIR),
         )
     ),
@@ -258,6 +266,19 @@ You can interact with Twitter:
 - Get trending topics
 - Analyze tweet engagement
 - Monitor hashtags
+
+### LinkedIn Operations
+You can interact with LinkedIn for job searching:
+- Get recommended jobs from your LinkedIn profile
+- Fetch top recommended jobs (10 by default)
+- Extract detailed job information:
+  * Job title
+  * Company name
+  * Location
+  * Job URL
+  * Extraction timestamp
+- Support for automated job discovery
+- Real-time job data retrieval
 
 ## Response Guidelines
 

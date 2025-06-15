@@ -1,0 +1,6 @@
+{
+   "disable-features": "AcceptCHFrame,AutoExpandDetailsElement,AvoidUnnecessaryBeforeUnloadCheckSync,CertificateTransparencyComponentUpdater,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,ImprovedCookieControls,LazyFrameLoading,LensOverlay,MediaRouter,PaintHolding,PlzDedicatedWorker,ThirdPartyStoragePartitioning,Translate",
+   "enable-features": "msMetricsLogFastStartup,msSendMetricsLogOnClose",
+   "force-fieldtrial-params": "",
+   "force-fieldtrials": "*msDeviceHasBatteryTrigger/triggered/*msEdgeEDropUI/triggered/*msEdgeMenuBarImprovementOnMac/triggered/*msPerformanceModeToggle/triggered/*msWalletMiniWalletWebUX/triggered"
+}
