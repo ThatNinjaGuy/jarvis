@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+python-dotenv
+google-adk
+google-cloud-aiplatform
+mcp
+aiohttp
+websockets
+pydantic

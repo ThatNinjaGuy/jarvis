@@ -34,6 +34,7 @@ PATH_TO_MAPS_SERVER = str((Path(__file__).parent / "mcp_servers" / "maps" / "ser
 PATH_TO_YOUTUBE_SERVER = str((Path(__file__).parent / "mcp_servers" / "youtube" / "server.py").resolve())
 PATH_TO_TWITTER_SERVER = str(ROOT_DIR / "node_modules" / "@enescinar" / "twitter-mcp")
 PATH_TO_MEMORY_PROFILE_SERVER = str((Path(__file__).parent / "mcp_servers" / "memory_profile" / "server.py").resolve())
+PATH_TO_RIDE_AGGREGATOR_SERVER = str((Path(__file__).parent / "mcp_servers" / "ride_aggregator" / "server.py").resolve())
 
 # Check if memory system is available
 try:
@@ -89,6 +90,13 @@ base_tools = [
                 **{key: str(value) for key, value in os.environ.items()},
                 **twitter_env  # Use the validated credentials
             },
+            cwd=str(ROOT_DIR),
+        )
+    ),
+    MCPToolset(
+        connection_params=StdioServerParameters(
+            command="python3",
+            args=["-m", "app.jarvis.mcp_servers.ride_aggregator.server"],
             cwd=str(ROOT_DIR),
         )
     ),
