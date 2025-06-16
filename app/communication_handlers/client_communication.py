@@ -1,14 +1,20 @@
 import base64
 import json
 import logging
+import asyncio
+from typing import Optional
 
 from fastapi import WebSocket
 from google.adk.agents import LiveRequestQueue
 from google.genai import types
+from starlette.websockets import WebSocketDisconnect
 
 # Import memory integration
 from app.config.agent_session import update_session_memory, is_memory_enabled
 
+# Constants
+MAX_RETRIES = 3
+RETRY_DELAY = 1  # seconds
 
 async def handle_client_to_agent_messaging(
     websocket: WebSocket, live_request_queue: LiveRequestQueue, session_data=None
@@ -16,6 +22,7 @@ async def handle_client_to_agent_messaging(
     """Handle communication from client to agent with optional memory tracking"""
     
     session_id = None
+    retry_count = 0
     
     # Extract session info if available
     if session_data and isinstance(session_data, dict):
@@ -23,31 +30,55 @@ async def handle_client_to_agent_messaging(
     
     while True:
         try:
-            # Decode JSON message
-            message_json = await websocket.receive_text()
-            message = json.loads(message_json)
+            # Decode JSON message with timeout
+            try:
+                message_json = await asyncio.wait_for(
+                    websocket.receive_text(),
+                    timeout=60  # 60 second timeout for receiving messages
+                )
+                message = json.loads(message_json)
+                retry_count = 0  # Reset retry count on successful message
+            except asyncio.TimeoutError:
+                logging.warning("WebSocket receive timeout")
+                continue
+            except WebSocketDisconnect:
+                logging.info("WebSocket disconnected normally")
+                break
             
             # Process message based on mime type
             await _process_client_message(websocket, live_request_queue, message, session_id)
+            
         except Exception as e:
-            logging.error(f"Error processing client message: {str(e)}", exc_info=True)
-            raise
+            retry_count += 1
+            if retry_count >= MAX_RETRIES:
+                logging.error(f"Max retries ({MAX_RETRIES}) reached. Error: {str(e)}", exc_info=True)
+                raise
+            
+            logging.warning(f"Error processing client message (attempt {retry_count}/{MAX_RETRIES}): {str(e)}")
+            await asyncio.sleep(RETRY_DELAY * retry_count)  # Exponential backoff
+            continue
 
 
 async def _process_client_message(
     websocket: WebSocket, live_request_queue: LiveRequestQueue, message: dict, session_id=None
 ):
     """Process client message based on mime type"""
-    mime_type = message["mime_type"]
-    data = message["data"]
-    role = message.get("role", "user")  # Default to 'user' if role is not provided
+    try:
+        mime_type = message["mime_type"]
+        data = message["data"]
+        role = message.get("role", "user")  # Default to 'user' if role is not provided
 
-    if mime_type == "text/plain":
-        await _handle_text_message(live_request_queue, data, role, session_id)
-    elif mime_type == "audio/pcm":
-        await _handle_audio_message(live_request_queue, data, session_id)
-    else:
-        raise ValueError(f"Mime type not supported: {mime_type}")
+        if mime_type == "text/plain":
+            await _handle_text_message(live_request_queue, data, role, session_id)
+        elif mime_type == "audio/pcm":
+            await _handle_audio_message(live_request_queue, data, session_id)
+        else:
+            raise ValueError(f"Mime type not supported: {mime_type}")
+    except KeyError as e:
+        raise ValueError(f"Invalid message format: missing required field {str(e)}")
+    except Exception as e:
+        logging.error(f"Error processing message: {str(e)}", exc_info=True)
+        raise
 
 
 async def _handle_text_message(

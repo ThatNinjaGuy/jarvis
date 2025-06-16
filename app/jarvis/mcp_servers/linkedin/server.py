@@ -54,42 +54,52 @@ class LinkedInAutomation:
         self.context = None
         self.page = None
         self.user_data_dir = "/Users/deadshot/Library/Application Support/Microsoft Edge/Default"
+        self._initialization_lock = asyncio.Lock()
         
-    async def initialize(self):
-        if not self.browser:
+    async def ensure_initialized(self):
+        """Ensure browser is initialized only when needed, with proper locking"""
+        async with self._initialization_lock:
+            if self.browser is None:
+                logging.info("Initializing LinkedIn browser automation...")
+                await self._initialize_browser()
+                
+    async def _initialize_browser(self):
+        """Internal browser initialization method"""
+        try:
             playwright = await async_playwright().start()
-            try:
-                # Enhanced browser configuration to avoid detection
-                self.browser = await playwright.chromium.launch_persistent_context(
-                    user_data_dir=self.user_data_dir,
-                    channel="msedge",
-                    headless=False,
-                    viewport={"width": 1920, "height": 1080},
-                    device_scale_factor=2,  # Retina display
-                    args=[
-                        "--disable-blink-features=AutomationControlled",
-                        "--no-sandbox",
-                        "--disable-web-security",
-                        "--disable-features=IsolateOrigins,site-per-process",
-                    ],
-                    ignore_default_args=["--enable-automation"],
-                    bypass_csp=True,
-                )
+            # Enhanced browser configuration to avoid detection
+            self.browser = await playwright.chromium.launch_persistent_context(
+                user_data_dir=self.user_data_dir,
+                channel="msedge",
+                headless=False,
+                viewport={"width": 1920, "height": 1080},
+                device_scale_factor=2,  # Retina display
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    "--no-sandbox",
+                    "--disable-web-security",
+                    "--disable-features=IsolateOrigins,site-per-process",
+                ],
+                ignore_default_args=["--enable-automation"],
+                bypass_csp=True,
+            )
 
-                self.page = await self.browser.new_page()
-                
-                # Enhanced anti-detection measures
-                await self.apply_stealth_mode()
-                
-            except Exception as e:
-                logging.error(f"Failed to initialize browser: {str(e)}", exc_info=True)
-                raise
+            self.page = await self.browser.new_page()
+            
+            # Enhanced anti-detection measures
+            await self.apply_stealth_mode()
+            
+            logging.info("LinkedIn browser automation initialized successfully")
+            
+        except Exception as e:
+            logging.error(f"Failed to initialize browser: {str(e)}", exc_info=True)
+            raise
 
     async def apply_stealth_mode(self):
         """Apply various anti-detection measures"""
         try:
             # Override permissions
-            await self.context.grant_permissions(['notifications'])
+            await self.browser.grant_permissions(['notifications'])
             
             # Override navigator.webdriver
             await self.page.add_init_script("""
@@ -156,6 +166,9 @@ class LinkedInAutomation:
             List[Dict[str, str]]: List of job postings with details
         """
         try:
+            # Ensure browser is initialized
+            await self.ensure_initialized()
+            
             # Go to LinkedIn jobs page (recommended jobs)
             await self.page.goto('https://www.linkedin.com/jobs/collections/recommended/', wait_until='domcontentloaded')
             
@@ -220,6 +233,9 @@ class LinkedInAutomation:
         if self.browser:
             await self.browser.close()
 
+# Create a shared automation instance
+linkedin_automation = LinkedInAutomation()
+
 # --- LinkedIn Functions ---
 async def search_jobs(max_results: int = 5) -> List[Dict[str, str]]:
     """
@@ -231,12 +247,13 @@ async def search_jobs(max_results: int = 5) -> List[Dict[str, str]]:
     Returns:
         List[Dict[str, str]]: List of job postings with details
     """
-    automation = LinkedInAutomation()
     try:
-        result = await automation.search_jobs(max_results)
+        result = await linkedin_automation.search_jobs(max_results)
         return result
-    finally:
-        await automation.cleanup()
+    except Exception as e:
+        logging.error(f"Error in search_jobs function: {str(e)}")
+        # Don't cleanup on error to allow retries
+        raise
 
 # --- MCP Server Setup ---
 logging.info("Creating MCP Server instance for LinkedIn...")

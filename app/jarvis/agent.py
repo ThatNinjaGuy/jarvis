@@ -5,10 +5,22 @@ import os
 from dotenv import load_dotenv
 import sys
 import warnings
+import logging
+import json
 from typing import Dict
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler('jarvis_agent.log')
+    ]
+)
+
 # Suppress Pydantic serialization warnings
-warnings.filterwarnings("ignore", message="Pydantic serializer warnings")
+warnings.filterwarnings("ignore", message="Pydantic serialization warnings")
 
 from .utils import (
     get_current_time,
@@ -82,17 +94,18 @@ base_tools = [
             cwd=str(ROOT_DIR),
         )
     ),
-    MCPToolset(
-        connection_params=StdioServerParameters(
-            command="npx",
-            args=["-y", "@enescinar/twitter-mcp"],
-            env={
-                **{key: str(value) for key, value in os.environ.items()},
-                **twitter_env  # Use the validated credentials
-            },
-            cwd=str(ROOT_DIR),
-        )
-    ),
+    # TEMPORARILY DISABLED: Twitter server fails due to missing credentials
+    # MCPToolset(
+    #     connection_params=StdioServerParameters(
+    #         command="npx",
+    #         args=["-y", "@enescinar/twitter-mcp"],
+    #         env={
+    #             **{key: str(value) for key, value in os.environ.items()},
+    #             **twitter_env  # Use the validated credentials
+    #         },
+    #         cwd=str(ROOT_DIR),
+    #     )
+    # ),
     MCPToolset(
         connection_params=StdioServerParameters(
             command="python3",
@@ -100,22 +113,29 @@ base_tools = [
             cwd=str(ROOT_DIR),
         )
     ),
+    MCPToolset(
+        connection_params=StdioServerParameters(
+            command="python3",
+            args=["-m", "app.jarvis.mcp_servers.web_browser.server"],
+            cwd=str(ROOT_DIR),
+        )
+    ),
 ]
 
-# Add memory tools if available
+# Add memory tools if available - TEMPORARILY DISABLED due to startup issues
 enhanced_tools = base_tools.copy()
-if MEMORY_AVAILABLE:
-    try:
-        memory_tool = MCPToolset(
-            connection_params=StdioServerParameters(
-                command="python3",
-                args=["-m", "app.jarvis.mcp_servers.memory_profile.server"],
-                cwd=str(ROOT_DIR),
-            )
-        )
-        enhanced_tools.append(memory_tool)
-    except Exception as e:
-        print(f"Warning: Could not load memory tools: {str(e)}")
+# if MEMORY_AVAILABLE:
+#     try:
+#         memory_tool = MCPToolset(
+#             connection_params=StdioServerParameters(
+#                 command="python3",
+#                 args=["-m", "app.jarvis.mcp_servers.memory_profile.server"],
+#                 cwd=str(ROOT_DIR),
+#             )
+#         )
+#         enhanced_tools.append(memory_tool)
+#     except Exception as e:
+#         print(f"Warning: Could not load memory tools: {str(e)}")
 
 # Enhanced instruction with memory capabilities
 enhanced_instruction = f"""
@@ -280,6 +300,19 @@ You can interact with LinkedIn for job searching:
 - Support for automated job discovery
 - Real-time job data retrieval
 
+### Web Browser Operations
+You can browse and extract data from any website:
+- Navigate to any URL and get page information
+- Extract text content from entire pages or specific elements
+- Extract specific page elements with their attributes
+- Take screenshots of web pages (full page or viewport)
+- Search for specific terms within page content
+- Get all links from a page with optional filtering
+- Handle JavaScript-rendered content
+- Support for various wait conditions
+- Anti-detection stealth browsing
+- Automated data extraction from any website
+
 ## Response Guidelines
 
 1. Memory-First Approach:
@@ -311,11 +344,24 @@ Today's date is {get_current_time()}.
 CRITICAL REMINDER: ALL operations MUST use the default user ID: {DEFAULT_USER_ID}
 """
 
-root_agent = Agent(
-    # A unique name for the agent.
+class EnhancedAgent(Agent):
+    """Enhanced Agent class with logging capabilities"""
+    
+    async def run_async(self, *args, **kwargs):
+        try:
+            logging.info("Agent starting execution with args: %s", json.dumps(kwargs.get('args', {})))
+            response = await super().run_async(*args, **kwargs)
+            logging.info("Agent response: %s", json.dumps(response))
+            return response
+        except Exception as e:
+            logging.error("Agent execution error: %s", str(e), exc_info=True)
+            raise
+
+# Create the enhanced root agent
+root_agent = EnhancedAgent(
     name="jarvis",
     model="gemini-2.0-flash-exp",
-    description="Agent to help with scheduling, calendar operations, email management, location-based services, YouTube data retrieval, Twitter interactions" + (", and advanced memory & user profiling" if MEMORY_AVAILABLE else ""),
+    description="Agent to help with scheduling, calendar operations, email management, location-based services, YouTube data retrieval, LinkedIn job searching, web browsing & data extraction" + (", and advanced memory & user profiling" if MEMORY_AVAILABLE else ""),
     instruction=enhanced_instruction,
     tools=enhanced_tools
 )
