@@ -9,5 +9,9 @@ token.pickle
 # Database files
 *.db
 *.sqlite3
+*.bin
 chroma_db/
 jarvis_memory_db/
+jarvis_memory.db
+node_modules/
+.DS_Store

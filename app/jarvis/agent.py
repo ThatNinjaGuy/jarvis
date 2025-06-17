@@ -111,6 +111,17 @@ base_tools = [
             cwd=str(ROOT_DIR),
         )
     ),
+    MCPToolset(
+        connection_params=StdioServerParameters(
+            command="npx",
+            args=["-y", "@suekou/mcp-notion-server"],
+            env={
+                **{key: str(value) for key, value in os.environ.items()},
+                "NOTION_API_TOKEN": os.getenv("NOTION_API_TOKEN", ""),
+            },
+            cwd=str(ROOT_DIR),
+        )
+    ),
 ]
 
 # Add memory tools if available
@@ -334,6 +345,58 @@ You can perform comprehensive food discovery and restaurant menu exploration on 
 **Menu Category Example:**
 "The Laziz Biryani category has 12 delicious options! Their Chicken Biryani ⭐ is 260 rupees with half/full options, and the Special Mutton Biryani 🍖 is highly rated at 4.6 stars for 300 rupees. All items come with portion size variants. Would you like to see another category or get more details about any of these dishes?"
 
+### Notion Workspace Operations
+You can perform comprehensive Notion workspace management and content operations:
+
+#### Content Management:
+- **Search and Discovery**: Search across your entire Notion workspace for pages, databases, and content
+- **Page Operations**: Create, read, update, and delete Notion pages with rich content
+- **Database Management**: Query databases, create entries, update records, and manage database schemas
+- **Block Operations**: Add, modify, and organize block content within pages
+- **Content Organization**: Structure information with proper hierarchy and relationships
+
+#### Database Operations:
+- **Query Databases**: Search and filter database entries with complex conditions
+- **Create Entries**: Add new records to databases with proper property mapping
+- **Update Records**: Modify existing database entries and their properties
+- **Schema Management**: View and understand database structures and property types
+
+#### Page and Content Operations:
+- **Create Pages**: Generate new pages with titles, content, and proper parent relationships
+- **Update Content**: Modify existing page content, properties, and structure
+- **Retrieve Information**: Get detailed page content, including all blocks and formatting
+- **Content Search**: Find specific information across your workspace
+
+#### Collaboration Features:
+- **Comments**: Add comments to pages for collaboration and feedback
+- **Sharing**: Understand page sharing and access permissions
+- **Version Control**: Track changes and updates to content
+
+#### Workspace Intelligence:
+- **Content Analysis**: Analyze and understand your workspace structure
+- **Information Extraction**: Pull specific data from pages and databases
+- **Cross-Reference**: Link and reference content across different pages and databases
+- **Automation**: Create automated workflows for content management
+
+#### Advanced Notion Features:
+- **Rich Text Processing**: Handle formatted text, links, mentions, and equations
+- **Media Management**: Work with images, files, and embedded content
+- **Template Operations**: Create and use page templates for consistency
+- **Integration Support**: Connect Notion content with other tools and services
+
+#### Conversational Notion Interaction:
+- Present Notion content in natural, readable formats
+- Explain database structures and relationships clearly
+- Provide context-aware suggestions for content organization
+- Help structure information for maximum productivity
+- Guide users through complex Notion operations step by step
+
+#### Memory Integration with Notion:
+- Store important Notion page IDs and database references
+- Remember user preferences for content organization
+- Track frequently accessed pages and databases
+- Learn from successful Notion workflows and operations
+
 ## Response Guidelines
 
 1. Memory-First Approach:
@@ -370,7 +433,7 @@ root_agent = Agent(
     # A unique name for the agent.
     name="jarvis",
     model="gemini-2.0-flash-exp",
-    description="Agent to help with scheduling, calendar operations, email management, location-based services, YouTube data retrieval, Twitter interactions, food delivery search"
+    description="Agent to help with scheduling, calendar operations, email management, location-based services, YouTube data retrieval, Twitter interactions, food delivery search, Notion workspace management"
     + (", and advanced memory & user profiling" if MEMORY_AVAILABLE else ""),
     instruction=enhanced_instruction,
     tools=enhanced_tools,
