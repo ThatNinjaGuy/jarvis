@@ -10,7 +10,6 @@ from google.genai import types
 # Import memory integration
 from app.config.agent_session import update_session_memory, is_memory_enabled
 
-
 async def handle_agent_to_client_messaging(
     websocket: WebSocket, live_events: AsyncIterable[Event | None], session_data=None
 ):
