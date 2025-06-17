@@ -5,3 +5,9 @@ __pycache__/
 .vscode/
 mcp_calendar_server/venv/
 token.pickle
+
+# Database files
+*.db
+*.sqlite3
+chroma_db/
+jarvis_memory_db/
