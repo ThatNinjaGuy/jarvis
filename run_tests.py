@@ -5,72 +5,99 @@ Test Runner for Jarvis Memory System
 This script runs the comprehensive test suite for the memory system.
 """
 
+import os
 import sys
-import subprocess
+import pytest
+import argparse
 from pathlib import Path
 
-def install_test_dependencies():
-    """Install required test dependencies"""
-    dependencies = ["pytest", "pytest-asyncio", "requests"]
-    
-    print("📦 Installing test dependencies...")
-    for dep in dependencies:
-        try:
-            subprocess.check_call([sys.executable, "-m", "pip", "install", dep])
-            print(f"✅ Installed {dep}")
-        except subprocess.CalledProcessError as e:
-            print(f"❌ Failed to install {dep}: {e}")
-            return False
-    return True
 
-def run_tests():
-    """Run the memory system tests"""
-    print("🧪 Running Memory System Tests")
-    print("=" * 50)
-    
-    # Ensure we're in the project directory
-    project_root = Path(__file__).parent
-    test_file = project_root / "tests" / "test_memory_system.py"
-    
-    if not test_file.exists():
-        print(f"❌ Test file not found: {test_file}")
-        return 1
-    
-    # Run the tests
-    try:
-        result = subprocess.run([
-            sys.executable, "-m", "pytest", 
-            str(test_file),
-            "-v",
-            "--tb=short"
-        ], cwd=project_root)
-        
-        return result.returncode
-    except Exception as e:
-        print(f"❌ Error running tests: {e}")
-        return 1
+def setup_test_environment():
+    """Setup the test environment with required configurations"""
+    # Add project root to Python path
+    root_dir = Path(__file__).resolve().parent
+    if str(root_dir) not in sys.path:
+        sys.path.insert(0, str(root_dir))
+
+    # Set environment variables for testing
+    os.environ["PYTHONPATH"] = str(root_dir)
+
+    # Disable unnecessary warnings during tests
+    if not os.environ.get("PYTHONWARNINGS"):
+        os.environ["PYTHONWARNINGS"] = "ignore::DeprecationWarning"
+
+
+def run_tests(test_type="all", verbose=False, failfast=False):
+    """
+    Run the specified tests
+
+    Args:
+        test_type (str): Type of tests to run ('unit', 'integration', or 'all')
+        verbose (bool): Whether to show verbose output
+        failfast (bool): Stop on first failure
+    """
+    setup_test_environment()
+
+    # Base pytest arguments
+    pytest_args = []
+
+    # Add verbosity
+    if verbose:
+        pytest_args.extend(["-v", "-s"])
+
+    # Add failfast
+    if failfast:
+        pytest_args.append("--exitfirst")
+
+    # Select tests based on type
+    if test_type == "unit":
+        pytest_args.append("tests/test_amazon_mcp_server.py")
+    elif test_type == "integration":
+        pytest_args.append("tests/test_amazon_mcp_server_integration.py")
+    else:  # all
+        pytest_args.extend(
+            [
+                "tests/test_amazon_mcp_server.py",
+                "tests/test_amazon_mcp_server_integration.py",
+            ]
+        )
+
+    # Run tests and return exit code
+    return pytest.main(pytest_args)
+
 
 def main():
-    """Main test runner function"""
-    print("🚀 Jarvis Memory System Test Runner")
-    print("=" * 40)
-    
-    # Install dependencies
-    if not install_test_dependencies():
-        print("❌ Failed to install test dependencies")
-        return 1
-    
+    """Main entry point for the test runner"""
+    parser = argparse.ArgumentParser(description="Run Amazon MCP Server tests")
+    parser.add_argument(
+        "--type",
+        choices=["unit", "integration", "all"],
+        default="all",
+        help="Type of tests to run",
+    )
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", help="Show verbose output"
+    )
+    parser.add_argument("--failfast", action="store_true", help="Stop on first failure")
+
+    args = parser.parse_args()
+
+    # Print test configuration
+    print(f"\nRunning {args.type} tests...")
+    if args.verbose:
+        print("Verbose output enabled")
+    if args.failfast:
+        print("Failfast enabled")
+    print("\n" + "=" * 50 + "\n")
+
     # Run tests
-    exit_code = run_tests()
-    
-    if exit_code == 0:
-        print("\n🎉 All tests passed!")
-        print("✅ Memory system is functioning correctly")
-    else:
-        print(f"\n❌ Tests failed (exit code: {exit_code})")
-        print("Please check the output above for details")
-    
-    return exit_code
+    exit_code = run_tests(
+        test_type=args.type, verbose=args.verbose, failfast=args.failfast
+    )
+
+    # Exit with appropriate code
+    sys.exit(exit_code)
+
 
 if __name__ == "__main__":
-    sys.exit(main()) 
+    main()

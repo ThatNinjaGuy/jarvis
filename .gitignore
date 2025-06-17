@@ -11,3 +11,4 @@ token.pickle
 *.sqlite3
 chroma_db/
 jarvis_memory_db/
+jarvis_memory.db

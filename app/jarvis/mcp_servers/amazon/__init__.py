@@ -1,0 +1,1 @@
+# Amazon MCP Server Package

@@ -45,6 +45,9 @@ PATH_TO_MEMORY_PROFILE_SERVER = str(
 PATH_TO_SWIGGY_SERVER = str(
     (Path(__file__).parent / "mcp_servers" / "swiggy" / "server.py").resolve()
 )
+PATH_TO_AMAZON_SERVER = str(
+    (Path(__file__).parent / "mcp_servers" / "amazon" / "server.py").resolve()
+)
 
 # Check if memory system is available
 try:
@@ -109,6 +112,17 @@ base_tools = [
             command="python3",
             args=["-m", "app.jarvis.mcp_servers.swiggy.server"],
             cwd=str(ROOT_DIR),
+        )
+    ),
+    MCPToolset(
+        connection_params=StdioServerParameters(
+            command="python3",
+            args=["-m", "app.jarvis.mcp_servers.amazon.server"],
+            cwd=str(ROOT_DIR),
+            env={
+                **{key: str(value) for key, value in os.environ.items()},
+                "AMAZON_PROXY": os.getenv("AMAZON_PROXY", ""),
+            },
         )
     ),
 ]
