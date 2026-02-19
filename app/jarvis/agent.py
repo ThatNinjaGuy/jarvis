@@ -10,11 +10,7 @@ from typing import Dict
 # Suppress Pydantic serialization warnings
 warnings.filterwarnings("ignore", message="Pydantic serializer warnings")
 
-from .utils import (
-    get_current_time,
-    load_environment,
-    get_twitter_credentials
-)
+from .utils import get_current_time, load_environment, get_twitter_credentials
 from app.config.constants import DEFAULT_USER_ID
 
 # Load environment variables
@@ -27,22 +23,28 @@ twitter_env: Dict[str, str] = get_twitter_credentials()
 ROOT_DIR = Path(__file__).resolve().parents[2]
 
 # IMPORTANT: Dynamically compute the absolute path to your server.py script
-PATH_TO_SQL_LITE_SERVER = str((Path(__file__).parent / "mcp_servers" / "sqllite" / "server.py").resolve())
-PATH_TO_CALENDAR_SERVER = str((Path(__file__).parent / "mcp_servers" / "google_calendar" / "server.py").resolve())
-PATH_TO_GMAIL_SERVER = str((Path(__file__).parent / "mcp_servers" / "gmail" / "server.py").resolve())
-PATH_TO_MAPS_SERVER = str((Path(__file__).parent / "mcp_servers" / "maps" / "server.py").resolve())
-PATH_TO_YOUTUBE_SERVER = str((Path(__file__).parent / "mcp_servers" / "youtube" / "server.py").resolve())
+PATH_TO_SQL_LITE_SERVER = str(
+    (Path(__file__).parent / "mcp_servers" / "sqllite" / "server.py").resolve()
+)
+PATH_TO_CALENDAR_SERVER = str(
+    (Path(__file__).parent / "mcp_servers" / "google_calendar" / "server.py").resolve()
+)
+PATH_TO_GMAIL_SERVER = str(
+    (Path(__file__).parent / "mcp_servers" / "gmail" / "server.py").resolve()
+)
+PATH_TO_MAPS_SERVER = str(
+    (Path(__file__).parent / "mcp_servers" / "maps" / "server.py").resolve()
+)
+PATH_TO_YOUTUBE_SERVER = str(
+    (Path(__file__).parent / "mcp_servers" / "youtube" / "server.py").resolve()
+)
 PATH_TO_TWITTER_SERVER = str(ROOT_DIR / "node_modules" / "@enescinar" / "twitter-mcp")
-PATH_TO_MEMORY_PROFILE_SERVER = str((Path(__file__).parent / "mcp_servers" / "memory_profile" / "server.py").resolve())
+PATH_TO_MEMORY_PROFILE_SERVER = str(
+    (Path(__file__).parent / "mcp_servers" / "memory_profile" / "server.py").resolve()
+)
 
 # Check if memory system is available
-try:
-    from app.config.database import db_config
-    from app.services.memory_service import JarvisMemoryService
-    from app.services.user_profile_service import UserProfileService
-    MEMORY_AVAILABLE = True
-except ImportError:
-    MEMORY_AVAILABLE = False
+MEMORY_AVAILABLE = True
 
 # Base tools (your original functionality)
 base_tools = [
@@ -87,7 +89,7 @@ base_tools = [
             args=["-y", "@enescinar/twitter-mcp"],
             env={
                 **{key: str(value) for key, value in os.environ.items()},
-                **twitter_env  # Use the validated credentials
+                **twitter_env,  # Use the validated credentials
             },
             cwd=str(ROOT_DIR),
         )
@@ -294,7 +296,8 @@ root_agent = Agent(
     # A unique name for the agent.
     name="jarvis",
     model="gemini-2.0-flash-exp",
-    description="Agent to help with scheduling, calendar operations, email management, location-based services, YouTube data retrieval, Twitter interactions" + (", and advanced memory & user profiling" if MEMORY_AVAILABLE else ""),
+    description="Agent to help with scheduling, calendar operations, email management, location-based services, YouTube data retrieval, Twitter interactions"
+    + (", and advanced memory & user profiling" if MEMORY_AVAILABLE else ""),
     instruction=enhanced_instruction,
-    tools=enhanced_tools
+    tools=enhanced_tools,
 )
